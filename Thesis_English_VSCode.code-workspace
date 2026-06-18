@@ -1,0 +1,24 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		}
+	],
+	"settings": {
+		"ive.workspace.modelLocation": "src/models",
+		"ive.workspace.handWrittenArtifacts": "src/hwls",
+		"ive.workspace.compilationTarget": "target",
+		"ive.dependencies.backboneServer.transformer.version": "2.2.0",
+		"ive.dependencies.backboneServer.cVersion": "2.0.0",
+		"isabelle.args": [
+			"-d",
+			"."
+		],
+		"editor.semanticTokenColorCustomizations": {
+			"rules": {
+				"keyword": "#ff33ee"
+			}
+		},
+		"java.configuration.updateBuildConfiguration": "disabled"
+	}
+}

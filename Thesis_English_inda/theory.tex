@@ -1,0 +1,48 @@
+% !TEX root = thesis.tex
+\chapter{Theoretical foundations}
+
+\section{Mathematical optimization} \label{sec:opti}
+
+First a general optimization problem in standard form is formulated (\ref{sec:optstandard}). Afterwards, a \ac{nnls} problem is presented. This \namecref{sec:opti} is based on \cite{Boyd2004}.
+
+\subsection{Optimization problem in standard form}\label{sec:optstandard}
+\newcommand{\optx}{x}
+\newcommand{\optf}{f}
+\newcommand{\opth}{h}
+
+The purpose of mathematical optimization is to find an $\vec{\optx}$ that minimizes  $\optf_0(\vec{\optx})$ under some constraints. The vector $\vec{\optx}\in \R^{n}$ is called \textit{optimization variable} and $\optf_0: \R^{n}\rightarrow\R$ \textit{objective function}. The constraints split into \textit{inequality constraints} $\optf_i(\vec{\optx}) \leq 0$ and \textit{equality constraints} $\opth_i(\vec{\optx}) = 0$ with $\optf_i, \opth_i: \R^{n}\rightarrow\R$. This leads to the optimization problem in \textit{standard form}
+\begin{equation}
+\begin{aligned}
+\minimizex{\vec{\optx}} \optf_0(\vec{\optx}) \\
+\st \optf_i(\vec{\optx}) \leq 0 ,\quad i=1\ldots m \\
+\stff \opth_i(\vec{\optx}) = 0 ,\quad i=1\ldots p.
+\end{aligned}
+\label{eq:optstandard}
+\end{equation}
+A point $\vec{\optx}$ is called \textit{feasible}, if it satisfies all constraints. The \textit{optimal value} $\opt{p}$ is defined as
+\begin{equation*}
+\opt{p} = \inf \Big\{ \optf_0(\vec{\optx})\ \big| \ \optf_i(\vec{\optx}) \leq 0,\ i=1\ldots m,\ \opth_i(\vec{\optx})=0,\ i=1\ldots p  \Big\}.
+\end{equation*}
+
+\subsection[Non-negative least squares]{\Acf{nnls}}
+\newcommand{\lsa}{a}
+\newcommand{\lsx}{x}
+\newcommand{\lsb}{b}
+
+The \ac{nnls} problem is a special optimization problem with several applications in different fields. It denotes as
+\begin{equation}
+\begin{aligned}
+\minimizex{\vec{\lsx}} \frac{1}{2} \norm{\mat{\lsa}\vec{\lsx}-\vec{\lsb}}{2}^{2} \\
+\st \vec{\lsx} \geq \zerovec{n}. \\
+\end{aligned}
+\label{eq:nnls}
+\end{equation}
+Comparing \ref{eq:nnls} with the optimization problem in standard form~\ref{eq:optstandard}, the objective function $\optf_0: \R^{n}\rightarrow\R$ and inequality constraint functions $\optf_i: \R^{n}\rightarrow\R,\ i=1\ldots n$ are
+\begin{equation*}
+\begin{aligned}
+\optf_0(\vec{\lsx}) &= \frac{1}{2} \norm{\mat{\lsa}\vec{\lsx}-\vec{\lsb}}{2}^{2} \\
+\optf_i(\vec{\lsx}) &= -\vecidx{\lsx}{i} ,\quad i=1\ldots n \\
+\end{aligned}
+\end{equation*}
+
+

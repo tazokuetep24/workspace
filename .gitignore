@@ -1,0 +1,31 @@
+# LaTeX build artifacts
+*.aux
+*.acn
+*.acr
+*.alg
+*.bbl
+*.blg
+*.idx
+*.ind
+*.ist
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.glg
+*.glo
+*.gls
+*.xdy
+*.nav
+*.snm
+*.vrb
+
+# Generated PDF (comment out if you want to track it)
+# *.pdf
+
+# Zip
+*.zip
