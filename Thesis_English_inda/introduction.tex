@@ -1,25 +1,102 @@
 % !TEX root = thesis.tex
-\chapter{Introduction}\label{sec:intro}
+\chapter{Introduction}\label{chap:intro}
 
-In this \namecref{sec:intro} the thesis is introduced. \Cref{sec:motivation} presents the motivation for the chosen topic, \ref{sec:aims} describes the aims of the thesis and \ref{sec:structure} outlines the content.
+The past decade has witnessed a remarkable transformation in \ac{ai} research, driven by the emergence and rapid scaling of large generative models. Systems such as GPT-3~\cite{brown2020gpt3}, LLaMA~\cite{touvron2023llama}, and their successors have demonstrated near-human performance on a broad spectrum of tasks---from natural language understanding and code generation to mathematical reasoning and multimodal dialogue. This progress rests fundamentally on the Transformer architecture~\cite{vaswani2017attention}, which, when trained on trillions of tokens and scaled to hundreds of billions of parameters, exhibits surprising emergent capabilities.
 
-\section{Motivation}\label{sec:motivation}
+Yet capability has come at a steep cost. Generating even a single response with a state-of-the-art \ac{llm} requires billions of floating-point operations, gigabytes of memory, and significant electrical power. In data-centre settings this cost is absorbed through specialised hardware and economies of scale, but it nonetheless drives substantial economic and environmental expenditure. On resource-constrained platforms---smartphones, embedded controllers, autonomous vehicles---such demands can make deployment entirely infeasible without dedicated optimisation. The field of resource-efficient \ac{llm} inference has therefore emerged as one of the most active and practically consequential research areas in machine learning~\cite{bai2024beyond}.
 
-Since the introduction of deep learning, the field of machine learning has seen a tremendous growth. In particular, large generative models have shown impressive capabilities in various domains, such as natural language processing and computer vision. However, these models often require significant computational resources for inference, which limits their accessibility and applicability in real-world scenarios. Therefore, there is a growing interest in developing resource-efficient inference techniques for large generative models. This thesis aims to explore and evaluate various approaches to achieve resource-efficient inference while maintaining the performance of large generative models.
+This paper provides a structured survey of the state of the art in resource-efficient inference for large generative models. It begins by grounding the analysis in a concrete understanding of what "resources" means in this context (Section~\ref{sec:resources}), proceeds to a concise overview of the Transformer architecture and the terminology required for the remainder of the paper (Sections~\ref{sec:transformer}--\ref{sec:terminology}), and introduces the scope and motivation for focusing specifically on edge devices (Section~\ref{sec:edge_motivation}). The detailed analysis of the inference pipeline and its bottlenecks is presented in Chapter~\ref{chap:inference}, and the comprehensive survey of efficiency techniques follows in Chapter~\ref{chap:methods}.
 
-\section{Aims}\label{sec:aims}
 
-The main aims of this thesis are as follows:
+\section{Motivation and Objectives}\label{sec:motivation}
+
+The economics of generative \ac{ai} inference are fundamentally different from those of training. Training is a one-time cost, amenable to the use of large distributed compute clusters over days or weeks. Inference, by contrast, must occur in real time for every user request---and the number of such requests is growing at an exponential rate as these models are embedded into products and workflows. A single 70~billion-parameter model served at modest throughput can require eight \acp{gpu} equipped with \ac{hbm}, each consuming 300--400~W. The aggregate cost and carbon footprint at societal scale is non-trivial~\cite{bai2024beyond}.
+
+Simultaneously, a growing set of applications demands inference at the \emph{edge}---that is, on devices with severely constrained memory, compute, and energy budgets. These include, but are not limited to:
 \begin{itemize}
-    \item To review and analyze existing techniques for resource-efficient inference in large generative models.
-    \item To propose novel methods for improving the efficiency of inference in large generative models.
-    \item To evaluate the proposed methods on benchmark datasets and compare their performance with existing techniques.
-    \item To provide insights and recommendations for future research in the field of resource-efficient inference in large generative models.
+    \item \textbf{Mobile devices}: smartphones and tablets offer 12--16~GB of shared system memory, a modest \ac{npu}, and a battery-imposed power envelope of 3--8~W.
+    \item \textbf{\ac{iot} hardware}: microcontrollers and system-on-chip platforms may have only megabytes of \ac{sram} and operate from energy-harvesting sources.
+    \item \textbf{Embedded AI systems}: autonomous vehicles, industrial robots, and wearables require low-latency responses but cannot maintain a reliable network connection to a cloud backend.
+    \item \textbf{Privacy-sensitive applications}: on-device processing avoids transmitting sensitive data---medical records, personal communications, financial transactions---to a remote server.
 \end{itemize}
 
-\section{Thesis structure}\label{sec:structure}
+The objective of this paper is therefore two-fold: to provide a clear analytical framework for understanding \emph{where} the resource bottlenecks in transformer inference arise, and to survey the techniques that address them, with particular emphasis on those that are relevant to edge deployment.
 
-The thesis is structured as follows: \Cref{sec:theory} provides a theoretical background on large generative models and resource-efficient inference techniques. \Cref{sec:methods} describes the proposed methods for improving inference efficiency. Finally, \Cref{sec:conclusion} summarizes the findings and discusses future research directions.
+
+\section{Defining Resources in the Context of Inference}\label{sec:resources}
+
+The term "resource" in the context of \ac{llm} inference encompasses four distinct but inter-related dimensions, each of which imposes a practical constraint on deployment~\cite{bai2024beyond}.
+
+\subsection{Compute}
+Computational cost is measured in \acp{flop}. A decoder-only model with $P$ parameters requires approximately $2P$ \acp{flop} per forward pass per token during the decode phase, because each parameter participates in one multiply and one accumulate operation. For a 7-billion-parameter model this yields roughly 14~GFLOPs per generated token~\cite{pope2023efficiently}. The primary metric for compute efficiency is \ac{mfu}, which expresses what fraction of peak hardware \ac{flop} throughput is actually utilised. In practice, \ac{mfu} values below 50\% are common during autoregressive decoding because the decode phase is memory-bandwidth-bound rather than compute-bound.
+
+\subsection{Memory}
+Memory constraints arise from two distinct sources:
+
+\textbf{Model weights.} Each parameter stored in 16-bit floating point (\ac{fp16}) consumes 2~bytes. A 7B model therefore requires 14~GB of weight memory; a 70B model requires 140~GB. Current edge devices typically provide 8--16~GB of total system memory, meaning a 7B model at full precision barely fits a flagship smartphone and leaves almost no room for the activation tensors.
+
+\textbf{\ac{kv} cache.} During inference, the intermediate key and value tensors produced by the attention layers must be stored for every past token to avoid recomputation. The \ac{kv} cache size scales as $2 \cdot L \cdot n \cdot d_{\text{kv}} \cdot \text{sizeof}(\text{dtype})$, where $L$ is the number of layers, $n$ is the current sequence length, and $d_{\text{kv}}$ is the per-head dimension. For a 7B model with 32 layers, 32 heads, and a head dimension of 128 at \ac{fp16}, a sequence of 2048 tokens requires approximately 8~GB of \ac{kv} cache---matching the model weights themselves. This cache grows linearly with sequence length and can dominate memory usage for long-context tasks.
+
+\subsection{Memory Bandwidth}
+Even when sufficient memory is available, the speed at which data can move between storage (typically \ac{dram}) and compute units determines throughput. During the decode phase, the model produces one token per forward pass. In this regime, all $P$ weight parameters and the entire \ac{kv} cache must be read from \ac{dram} for each generated token, yet they contribute very little compute (because the input is a single token vector). The ratio of memory accesses to arithmetic operations is therefore extremely high: the operation is \emph{memory-bandwidth-bound}~\cite{pope2023efficiently}. High-bandwidth memory (\ac{hbm}) in \ac{gpu} accelerators partially alleviates this; edge devices that rely on low-bandwidth \ac{dram} or even \ac{sram} face a more severe bottleneck.
+
+\subsection{Energy}
+Energy consumption is measured in joules per generated token. For edge devices it is the most fundamental constraint: a smartphone battery stores roughly 50~kJ, and a continuous inference workload at even 5~W drains the battery in a few hours. \ac{dram} accesses are energetically expensive---approximately 200~pJ per 64-bit read, compared to 1~pJ for a floating-point multiply in an on-chip arithmetic unit. This makes reducing the volume of \ac{dram} traffic (through caching, quantisation, or architectural changes) a prerequisite for energy-efficient edge inference.
+
+
+\section{The Transformer Architecture}\label{sec:transformer}
+
+Modern \acp{llm} are built on the Transformer~\cite{vaswani2017attention}, specifically the \emph{decoder-only} variant introduced by GPT-style architectures. Understanding the architecture at a functional level is necessary to reason about where bottlenecks arise.
+
+\subsection{Tokenisation and Embedding}
+Raw text is first converted into a sequence of integer token IDs by a tokeniser (e.g., Byte-Pair Encoding). Each token ID is then mapped to a dense real-valued vector $\mathbf{e} \in \mathbb{R}^{d_{\text{model}}}$ via a learned embedding matrix $\mathbf{W}_E \in \mathbb{R}^{|V| \times d_{\text{model}}}$, where $|V|$ is the vocabulary size (typically 32\,000--128\,000) and $d_{\text{model}}$ is the model dimension (e.g., 4096 for a 7B model). A positional encoding---either fixed sinusoidal~\cite{vaswani2017attention} or learned rotary (\ac{rope})---is added to inject information about token order.
+
+\subsection{Transformer Blocks}
+The sequence of $d_{\text{model}}$-dimensional vectors is then passed through $L$ identical Transformer blocks (e.g., $L = 32$ for a 7B model). Each block contains two sub-layers connected by residual connections and layer normalisation (\ac{ln}):
+
+\paragraph{\ac{mha}.} Given input $\mathbf{X} \in \mathbb{R}^{n \times d_{\text{model}}}$, the attention sub-layer projects $\mathbf{X}$ into $h$ sets of query, key, and value matrices using learned weight matrices $\mathbf{W}^Q_i, \mathbf{W}^K_i, \mathbf{W}^V_i \in \mathbb{R}^{d_{\text{model}} \times d_k}$ for head $i$:
+\begin{equation}
+  \text{Attention}(\mathbf{Q}_i, \mathbf{K}_i, \mathbf{V}_i)
+  = \text{softmax}\!\left(\frac{\mathbf{Q}_i \mathbf{K}_i^\top}{\sqrt{d_k}}\right)\mathbf{V}_i.
+  \label{eq:attention}
+\end{equation}
+The $h$ head outputs are concatenated and projected by $\mathbf{W}^O \in \mathbb{R}^{h d_k \times d_{\text{model}}}$. The causal mask in decoder-only models ensures that each token can only attend to itself and earlier tokens.
+
+\paragraph{\ac{ffn}.} The feed-forward sub-layer is a two-layer \ac{mlp} with a non-linear activation:
+\begin{equation}
+  \text{FFN}(\mathbf{x}) = \sigma(\mathbf{x}\mathbf{W}_1 + \mathbf{b}_1)\mathbf{W}_2 + \mathbf{b}_2,
+  \label{eq:ffn}
+\end{equation}
+where $\mathbf{W}_1 \in \mathbb{R}^{d_{\text{model}} \times d_{\text{ff}}}$, $\mathbf{W}_2 \in \mathbb{R}^{d_{\text{ff}} \times d_{\text{model}}}$, and $d_{\text{ff}} = 4 d_{\text{model}}$ in the standard configuration. Modern architectures replace the ReLU activation with SwiGLU or GELU and use a gated variant with three weight matrices, slightly increasing parameter count. The \ac{ffn} sublayer accounts for roughly two-thirds of a Transformer block's parameters.
+
+\subsection{Language Modelling Head}
+After the final Transformer block, a linear projection $\mathbf{W}_{LM} \in \mathbb{R}^{d_{\text{model}} \times |V|}$ (often shared with $\mathbf{W}_E$) maps the last hidden state to a distribution over the vocabulary. A softmax followed by a sampling strategy (greedy, temperature sampling, top-$k$, or top-$p$) selects the next token.
+
+
+\section{Key Terminology}\label{sec:terminology}
+
+The following concepts are used throughout the paper and are defined here for clarity.
+
+\begin{description}
+  \item[Token.] The atomic unit of input/output. Roughly corresponds to one common word or sub-word fragment (approximately 0.75 natural-language words per token on average for English text).
+  \item[Prefill phase.] The initial stage of inference in which all tokens of the input prompt are processed in parallel to populate the \ac{kv} cache. This phase is compute-bound.
+  \item[Decode phase.] The subsequent autoregressive loop in which new tokens are generated one at a time, each conditioned on all prior tokens. This phase is memory-bandwidth-bound.
+  \item[\ac{kv} cache.] The stored key and value tensors for all past tokens across all layers, maintained to avoid recomputing attention for previously seen tokens on each decode step.
+  \item[Quantisation.] The process of representing model weights (and/or activations) at reduced numerical precision, e.g., replacing 32-bit or 16-bit floating-point values with 8-bit or 4-bit integers.
+  \item[Pruning.] Removing weights, attention heads, or entire layers from a trained model to reduce its parameter count and computational cost.
+  \item[Knowledge Distillation.] Training a smaller student model to reproduce the behaviour of a larger teacher model, transferring capability at reduced cost.
+  \item[Throughput.] The number of tokens generated per second across all concurrent requests; a system-level metric of primary importance for server-side deployment.
+  \item[Latency.] The time from the arrival of a request to the generation of the final token; a user-facing metric of primary importance for interactive and edge applications.
+  \item[Edge device.] Any computing platform with constrained memory, compute, and power budget that operates outside a data centre, including smartphones, embedded controllers, and automotive compute units.
+\end{description}
+
+
+\section{Scope: Why Edge Devices?}\label{sec:edge_motivation}
+
+While cloud-based inference remains the dominant deployment paradigm today, the trajectory of \ac{llm} adoption points strongly towards edge deployment. Smartphone vendors have begun integrating dedicated \acp{npu} capable of running quantised 7B models~\cite{edgellm2024review}. Automotive and industrial systems increasingly require on-device reasoning without round-trip latency. Privacy regulations in healthcare and finance incentivise on-premise or on-device processing.
+
+The edge deployment scenario is particularly demanding because it aggregates all four resource constraints simultaneously: memory limits prevent loading large models, bandwidth limits degrade decode throughput, power limits cap sustained performance, and compute limits restrict the complexity of techniques that can be applied at runtime. It thus serves as the most informative stress test for efficiency techniques and is therefore the lens through which the methods surveyed in Chapter~\ref{chap:methods} are evaluated.
+
 
 
 

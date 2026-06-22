@@ -1,0 +1,50 @@
+% !TEX root = thesis.tex
+\chapter{Conclusion}\label{chap:conclusion}
+
+This paper has traced the resource challenges of \ac{llm} inference from first principles through to practical deployment solutions, with a sustained focus on edge hardware as the most demanding deployment target.
+
+Chapter~\ref{chap:intro} established that the four resource dimensions of \ac{llm} inference---compute, memory, memory bandwidth, and energy---are not equally constraining in all settings. On edge devices, memory capacity is the hard, non-negotiable limit: a model that does not fit in \ac{dram} simply cannot run. Memory bandwidth is the dominant performance bottleneck during the decode phase, and energy determines the sustained throughput a device can deliver over time.
+
+Chapter~\ref{chap:inference} analysed the inference pipeline step by step and identified its two most resource-intensive components: the self-attention sub-layer, which incurs $O(n^2)$ compute during prefill and a growing \ac{kv} cache during decode, and the \ac{ffn} sub-layer, which accounts for roughly two-thirds of all model parameters and is memory-bandwidth-bound during decode. The chapter also clarified that while the \ac{kv} cache is an inference-specific structure, its size is determined by architectural choices made at training time---meaning that the efficiency of inference is, in part, a function of how thoughtfully the model was designed.
+
+Chapter~\ref{chap:methods} surveyed the state-of-the-art techniques for addressing these bottlenecks. Several key findings emerge from this analysis.
+
+
+\section{Key Findings}\label{sec:key_findings}
+
+\textbf{Quantisation is the single most impactful intervention for edge deployment.} Reducing weight precision from \ac{fp16} to INT4 achieves a 4$\times$ compression of model weights, making 7B-class models feasible on consumer hardware with 4--8~GB of memory. Methods such as GPTQ~\cite{frantar2023gptq} and AWQ~\cite{lin2024awq} demonstrate that this compression can be achieved with minimal perplexity degradation, particularly for models above 7B parameters.
+
+\textbf{\ac{gqa} is now essential architecture.} The reduction of the \ac{kv} cache footprint by a factor of $h/g$ (where $h$ is the number of query heads and $g$ is the number of key-value head groups) is one of the most memory-efficient interventions available. It is cost-free in a newly trained model and recoverable at low cost through uptraining. Given the disproportionate role of \ac{kv} cache in edge memory budgets, \ac{gqa} should be considered a baseline requirement for any model targeting edge deployment.
+
+\textbf{FlashAttention makes long-context inference practical.} By eliminating the quadratic memory traffic of the attention matrix, FlashAttention~\cite{dao2022flashattention} substantially reduces both latency and energy consumption for prefill, and makes longer context windows feasible without exceeding on-chip memory limits.
+
+\textbf{Speculative decoding provides latency improvements without quality loss.} For interactive applications---which are the primary use case for edge inference---reducing latency per generated token is more important than maximising throughput. Speculative decoding~\cite{leviathan2023speculative} directly targets this metric and is composable with other techniques.
+
+\textbf{Dedicated edge runtimes bridge the gap between algorithmic efficiency and hardware performance.} llama.cpp~\cite{ggerganov2023llamacpp} and MLC-LLM~\cite{chen2023mlc} demonstrate that practical edge inference is achievable with current 7B-class models when quantisation, hardware-specific SIMD kernels, and efficient memory management are integrated in a single, well-engineered stack.
+
+
+\section{Trade-off Summary}\label{sec:tradeoff_summary}
+
+No combination of techniques eliminates all resource constraints. The residual trade-offs that practitioners must navigate include:
+
+\begin{itemize}
+    \item \textbf{Compression depth vs. task quality.} Below INT4 precision, perplexity degradation becomes task-dependent and can be severe for arithmetic and logical reasoning. The optimal compression level is application-specific and must be validated empirically.
+    \item \textbf{Model size vs. instruction-following capability.} Very small models (1--3B parameters), even after distillation, exhibit limited complex instruction following. Practical edge deployment of capable assistants currently requires 7B+ parameters, constraining the minimum hardware target.
+    \item \textbf{Speculative decoding overhead.} The draft model adds memory and compute overhead. On heavily memory-constrained devices, the additional memory for the draft model may not be available, limiting speculative decoding to devices with at least 6--8~GB of available memory.
+    \item \textbf{Static compression vs. dynamic efficiency.} Model compression (quantisation, pruning) operates on the model and is applied once; inference-level optimisations (FlashAttention, speculative decoding) operate at runtime. The two categories are complementary but require integrated engineering effort to combine reliably.
+\end{itemize}
+
+
+\section{Future Directions}\label{sec:future_directions}
+
+Several open problems define the frontier of resource-efficient edge inference.
+
+\textbf{Sub-4-bit quantisation.} Reliable INT2 and INT3 quantisation methods that preserve task quality would reduce the memory floor for a 7B model to below 2~GB, opening the majority of current smartphones as deployment targets. Emerging methods that combine low-bit weight quantisation with full-precision activations show promise in this direction.
+
+\textbf{Hardware--software co-design.} Current edge \acp{npu} are optimised for vision models (fixed-shape convolutions) rather than the variable-sequence, attention-heavy workloads of \acp{llm}. Purpose-designed \ac{llm} accelerators with on-chip \ac{kv} cache storage and native support for irregular sparse patterns could unlock an order-of-magnitude efficiency improvement beyond what software alone can achieve.
+
+\textbf{Adaptive inference.} Fixed-capacity models always over-provision compute for simple queries. Adaptive or early-exit architectures that route "easy" queries to shallow layers (or a small model) and "hard" queries to deeper layers (or a large model) could significantly reduce average energy consumption without quality loss on the overall query distribution.
+
+\textbf{On-device fine-tuning and personalisation.} Efficient \ac{lora}-based fine-tuning methods are already small enough to run on high-end smartphones. Integrating personalisation into the edge inference loop---without degrading privacy or exhausting the battery---remains an open engineering and research challenge.
+
+The convergence of quantisation, architectural improvements (\ac{gqa}, FlashAttention), and purpose-built edge runtimes has already made interactive on-device \ac{llm} inference a practical reality for a subset of hardware. The trajectory of the field suggests that within the next two to three years, capable language models will be routinely deployable across the full range of consumer edge devices.

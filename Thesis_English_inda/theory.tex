@@ -1,48 +1,140 @@
 % !TEX root = thesis.tex
-\chapter{Theoretical foundations}
+\chapter{The Inference Process and its Bottlenecks}\label{chap:inference}
 
-\section{Mathematical optimization} \label{sec:opti}
+This chapter traces the complete forward pass of a decoder-only Transformer from raw input text to a generated token, identifies the principal resource bottlenecks at each stage, and explains why those bottlenecks are not always confined to the inference phase alone. The presentation is intentionally concise but structured, as the bottlenecks identified here form the organising principle for the efficiency techniques surveyed in Chapter~\ref{chap:methods}.
 
-First a general optimization problem in standard form is formulated (\ref{sec:optstandard}). Afterwards, a \ac{nnls} problem is presented. This \namecref{sec:opti} is based on \cite{Boyd2004}.
 
-\subsection{Optimization problem in standard form}\label{sec:optstandard}
-\newcommand{\optx}{x}
-\newcommand{\optf}{f}
-\newcommand{\opth}{h}
+\section{Overview of the Inference Pipeline}\label{sec:inference_overview}
 
-The purpose of mathematical optimization is to find an $\vec{\optx}$ that minimizes  $\optf_0(\vec{\optx})$ under some constraints. The vector $\vec{\optx}\in \R^{n}$ is called \textit{optimization variable} and $\optf_0: \R^{n}\rightarrow\R$ \textit{objective function}. The constraints split into \textit{inequality constraints} $\optf_i(\vec{\optx}) \leq 0$ and \textit{equality constraints} $\opth_i(\vec{\optx}) = 0$ with $\optf_i, \opth_i: \R^{n}\rightarrow\R$. This leads to the optimization problem in \textit{standard form}
-\begin{equation}
-\begin{aligned}
-\minimizex{\vec{\optx}} \optf_0(\vec{\optx}) \\
-\st \optf_i(\vec{\optx}) \leq 0 ,\quad i=1\ldots m \\
-\stff \opth_i(\vec{\optx}) = 0 ,\quad i=1\ldots p.
-\end{aligned}
-\label{eq:optstandard}
-\end{equation}
-A point $\vec{\optx}$ is called \textit{feasible}, if it satisfies all constraints. The \textit{optimal value} $\opt{p}$ is defined as
-\begin{equation*}
-\opt{p} = \inf \Big\{ \optf_0(\vec{\optx})\ \big| \ \optf_i(\vec{\optx}) \leq 0,\ i=1\ldots m,\ \opth_i(\vec{\optx})=0,\ i=1\ldots p  \Big\}.
-\end{equation*}
+Inference in a decoder-only Transformer proceeds in two temporally distinct phases that exhibit very different resource profiles.
 
-\subsection[Non-negative least squares]{\Acf{nnls}}
-\newcommand{\lsa}{a}
-\newcommand{\lsx}{x}
-\newcommand{\lsb}{b}
+\textbf{Prefill phase.} All $n_{\text{prompt}}$ tokens of the input prompt are processed simultaneously in a single forward pass. Because all input tokens are available upfront, the attention computation is fully parallelised across the sequence dimension. This phase is \emph{compute-bound}: the dominant cost is the matrix multiplications in the attention and \ac{ffn} sub-layers, and the hardware's arithmetic throughput is the limiting resource.
 
-The \ac{nnls} problem is a special optimization problem with several applications in different fields. It denotes as
-\begin{equation}
-\begin{aligned}
-\minimizex{\vec{\lsx}} \frac{1}{2} \norm{\mat{\lsa}\vec{\lsx}-\vec{\lsb}}{2}^{2} \\
-\st \vec{\lsx} \geq \zerovec{n}. \\
-\end{aligned}
-\label{eq:nnls}
-\end{equation}
-Comparing \ref{eq:nnls} with the optimization problem in standard form~\ref{eq:optstandard}, the objective function $\optf_0: \R^{n}\rightarrow\R$ and inequality constraint functions $\optf_i: \R^{n}\rightarrow\R,\ i=1\ldots n$ are
-\begin{equation*}
-\begin{aligned}
-\optf_0(\vec{\lsx}) &= \frac{1}{2} \norm{\mat{\lsa}\vec{\lsx}-\vec{\lsb}}{2}^{2} \\
-\optf_i(\vec{\lsx}) &= -\vecidx{\lsx}{i} ,\quad i=1\ldots n \\
-\end{aligned}
-\end{equation*}
+\textbf{Decode phase.} After the prefill, the model enters an autoregressive loop: at each step it processes a \emph{single} new token, conditions on the full context (via the \ac{kv} cache), and samples the next token. Because only one token is processed per step, the arithmetic intensity (ratio of floating-point operations to memory bytes accessed) drops by a factor of $n$. The dominant cost is now loading the $P$-parameter weight matrices and the accumulated \ac{kv} cache from \ac{dram} into the compute unit for every generated token. This phase is \emph{memory-bandwidth-bound}~\cite{pope2023efficiently}.
 
+The complete pipeline is illustrated in Figure~\ref{fig:inference_pipeline}.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+  node distance   = 0.75cm and 0.5cm,
+  process/.style  = {rectangle, draw=blue!70, fill=blue!8,
+                     text width=6.8cm, text centered,
+                     rounded corners=3pt, minimum height=1.5em, font=\small},
+  highlight/.style= {rectangle, draw=red!70, fill=red!8,
+                     text width=6.8cm, text centered,
+                     rounded corners=3pt, minimum height=1.5em, font=\small},
+  io/.style       = {rectangle, draw=green!60!black, fill=green!8,
+                     text width=6.8cm, text centered,
+                     rounded corners=3pt, minimum height=1.5em, font=\small},
+  annot/.style    = {rectangle, draw=red!50, fill=red!5,
+                     text width=4.6cm, align=left,
+                     rounded corners=2pt, font=\footnotesize},
+  decision/.style = {diamond, draw=orange!80, fill=orange!8,
+                     text width=2.0cm, text centered,
+                     aspect=2.8, font=\small},
+  arrow/.style    = {-{Stealth}, thick},
+  darrow/.style   = {dashed, -{Stealth}, thick, red!50}
+]
+%% --- Main flow ---
+\node [io]       (inp)    {Input Prompt (text)};
+\node [process,  below=of inp]    (tok)    {(1)\ Tokenisation};
+\node [process,  below=of tok]    (emb)    {(2)\ Token Embedding + Positional Encoding};
+\node [highlight, below=of emb]   (attn)   {(3)\ Multi-Head Self-Attention + \ac{kv} Cache};
+\node [highlight, below=of attn]  (ffn)    {(4)\ Feed-Forward Network (FFN)};
+\node [process,  below=of ffn]    (lmh)    {(5)\ LM Head: Linear + Softmax};
+\node [decision, below=of lmh, node distance=1.1cm] (eos)  {EOS?};
+\node [io,       below=of eos, node distance=1.1cm]  (out)   {Generated Output (text)};
+
+%% --- Arrows main flow ---
+\foreach \from/\to in {inp/tok, tok/emb, emb/attn, attn/ffn, ffn/lmh, lmh/eos}
+  \draw [arrow] (\from) -- (\to);
+\draw [arrow] (eos.south) -- node[right, font=\footnotesize]{Yes} (out.north);
+\draw [arrow] (eos.east)  -- ++(2.2,0) |- node[pos=0.25, right, font=\footnotesize]{No (decode loop)} (attn.east);
+
+%% --- Bottleneck annotations ---
+\node [annot, right=1.8cm of attn] (ba) {%
+  \textbf{Bottleneck:}\\
+  $\mathcal{O}(n^2)$ memory \& compute\\
+  \ac{kv} cache $\propto L \!\cdot\! n$\\
+  Bandwidth-bound in decode};
+\node [annot, right=1.8cm of ffn]  (bf) {%
+  \textbf{Bottleneck:}\\
+  ${\sim}2/3$ of all parameters\\
+  Bandwidth-bound in decode};
+
+\draw [darrow] (attn.east) -- (ba.west);
+\draw [darrow] (ffn.east)  -- (bf.west);
+
+%% --- Phase labels ---
+\node [left=1.4cm of emb, font=\footnotesize\color{blue!70}, align=right,
+       text width=2.2cm] {\textit{Prefill phase}\\(parallel)};
+\node [left=1.4cm of attn, font=\footnotesize\color{red!70}, align=right,
+       text width=2.2cm] {\textit{Decode phase}\\(sequential)};
+\end{tikzpicture}
+\caption{Schematic of the Transformer inference pipeline. Red-shaded steps (3, 4)
+  represent the primary resource bottlenecks. The decode loop repeats steps 3--5
+  until an end-of-sequence token is produced.}
+\label{fig:inference_pipeline}
+\end{figure}
+
+
+\section{Step-by-Step Bottleneck Analysis}\label{sec:bottleneck_analysis}
+
+\subsection{Step 1: Tokenisation}
+
+The tokeniser maps a string of characters to a sequence of integer IDs using a fixed vocabulary and a pre-trained merge table (e.g., Byte-Pair Encoding). This step is computationally negligible. Its resource relevance is indirect: a poorly chosen tokenisation scheme may increase the average sequence length $n$, which in turn scales the \ac{kv} cache and the cost of the attention computation.
+
+\subsection{Step 2: Token Embedding and Positional Encoding}
+
+The embedding lookup is a simple table indexing operation: $O(n \cdot d_{\text{model}})$ memory reads with no arithmetic. For large vocabularies (e.g., 128\,000 tokens) the embedding matrix $\mathbf{W}_E$ can occupy several hundred megabytes. Because the embedding table is accessed irregularly (depending on which tokens appear in the prompt), it exercises memory bandwidth with poor cache locality.
+
+\subsection{Step 3: Multi-Head Self-Attention}
+
+The attention sub-layer is the most analytically interesting bottleneck. Its resource costs arise from two sources:
+
+\textbf{Arithmetic cost.} Computing $\mathbf{Q}\mathbf{K}^\top$ for a sequence of length $n$ requires $O(n^2 d_k)$ floating-point operations, giving quadratic growth in sequence length. During prefill this dominates for long contexts. During decode, $n_{\text{new}}=1$, so the arithmetic cost collapses to $O(n d_k)$---a single dot-product per head per past token.
+
+\textbf{\ac{kv} cache memory.} To avoid recomputing keys and values for every past token, the model caches them after prefill. As derived in Section~\ref{sec:resources}, this cache can equal or exceed the model weights in size for long sequences. Its growth with sequence length is the principal obstacle to serving many concurrent long-context requests, and to fitting the inference workload on an edge device.
+
+\subsection{Step 4: Feed-Forward Network}
+
+The \ac{ffn} sub-layer applies two (or three, in gated architectures) large matrix multiplications per layer. For a standard configuration, $\mathbf{W}_1 \in \mathbb{R}^{d_{\text{model}} \times 4 d_{\text{model}}}$ and $\mathbf{W}_2 \in \mathbb{R}^{4 d_{\text{model}} \times d_{\text{model}}}$, so the \ac{ffn} accounts for $8 d_{\text{model}}^2$ parameters per layer---approximately twice the parameter count of the attention projection matrices. Across all $L$ layers, the \ac{ffn} weights represent roughly 65\% of total model parameters.
+
+During prefill, the \ac{ffn} is compute-bound: the large matrix multiplications achieve high \ac{mfu}. During decode (single-token input), the same weight matrices must be read from \ac{dram} but perform only $O(d_{\text{model}})$ arithmetic operations per column---making this phase heavily bandwidth-bound.
+
+\subsection{Step 5: LM Head and Sampling}
+
+The LM head projects the final hidden state to a logit vector of size $|V|$. This is another large matrix multiplication ($\mathbb{R}^{d_{\text{model}} \times |V|}$, which is often shared with $\mathbf{W}_E$ to save memory). The subsequent softmax and sampling step are computationally inexpensive but introduce a sequential dependency: the next token cannot be determined until sampling is complete, enforcing a fundamental serialisation in standard autoregressive decoding.
+
+
+\section{Limitations Beyond Inference}\label{sec:beyond_inference}
+
+Several of the bottlenecks described above are not exclusive to the inference phase. This distinction is relevant when evaluating optimisation strategies.
+
+\textbf{Model weight size.} The memory footprint of the weights is identical whether the model is being trained or served. Compression techniques such as quantisation and pruning that reduce weight memory therefore benefit both phases. Their costs---accuracy degradation and potential increases in calibration compute---are also shared.
+
+\textbf{\ac{kv} cache growth.} The \ac{kv} cache is an inference-time construct: it does not exist during training. However, its size is a direct consequence of architectural decisions made before training (number of layers $L$, number of attention heads $h$, head dimension $d_k$), which cannot be changed post hoc without retraining. Architectural choices such as \ac{gqa}~\cite{ainslie2023gqa} or \ac{mqa}~\cite{shazeer2019mqa} that reduce the per-layer \ac{kv} footprint must therefore be baked into the model from the outset.
+
+\textbf{Arithmetic intensity.} The bandwidth-vs-compute characterisation of decode-phase inference stems from the small batch size of autoregressive generation (effective batch size = 1 per concurrent request). Techniques such as continuous batching, which increase the effective batch size by grouping multiple requests, can shift the operating point towards the compute-bound regime---but require system-level changes and are primarily applicable in server settings.
+
+Table~\ref{tab:bottleneck_summary} summarises the main bottlenecks and their primary manifestations in each phase.
+
+\begin{table}[ht]
+  \centering
+  \caption{Summary of inference bottlenecks by phase. $n$ = sequence length,
+    $P$ = total parameters, $L$ = layers, BW = memory bandwidth.}
+  \label{tab:bottleneck_summary}
+  \small
+  \begin{tabular}{lllll}
+    \hline\hline
+    \textbf{Component} & \textbf{Prefill} & \textbf{Decode} & \textbf{Primary resource} & \textbf{Scales with} \\
+    \hline
+    Attention (arithmetic) & $O(n^2 d)$ & $O(n d)$ & Compute / BW & $n^2$ / $n$ \\
+    \ac{kv} cache (memory) & $O(Ln d_k)$ & $O(Ln d_k)$ & Memory & $n$ \\
+    \ac{ffn} weights (BW) & Compute-bound & BW-bound & BW & $P$ \\
+    LM head & Small & Small & BW & $|V|$ \\
+    \hline\hline
+  \end{tabular}
+\end{table}
 
