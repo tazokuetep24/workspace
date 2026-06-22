@@ -1,48 +1,36 @@
 % !TEX root = thesis.tex
-\chapter{Theoretical foundations}
+\chapter{Theoretical foundations}\label{sec:theory}
 
-\section{Mathematical optimization} \label{sec:opti}
+\section{Large generative models}
 
-First a general optimization problem in standard form is formulated (\ref{sec:optstandard}). Afterwards, a \ac{nnls} problem is presented. This \namecref{sec:opti} is based on \cite{Boyd2004}.
+Most modern large language models are based on the transformer architecture \cite{Vaswani2017}. The transformer replaces recurrence with self-attention and a feed-forward network, and has become the dominant foundation for generative text models, including autoregressive decoders.
 
-\subsection{Optimization problem in standard form}\label{sec:optstandard}
-\newcommand{\optx}{x}
-\newcommand{\optf}{f}
-\newcommand{\opth}{h}
+A single transformer block computes attention scores for an input sequence of length $L$ and hidden dimension $d$. The self-attention operation has a complexity of $\mathcal{O}(L^{2} d)$, while the feed-forward network contributes $\mathcal{O}(L d^{2})$. As a result, inference cost grows rapidly with both sequence length and model dimension \cite{Vaswani2017}.
 
-The purpose of mathematical optimization is to find an $\vec{\optx}$ that minimizes  $\optf_0(\vec{\optx})$ under some constraints. The vector $\vec{\optx}\in \R^{n}$ is called \textit{optimization variable} and $\optf_0: \R^{n}\rightarrow\R$ \textit{objective function}. The constraints split into \textit{inequality constraints} $\optf_i(\vec{\optx}) \leq 0$ and \textit{equality constraints} $\opth_i(\vec{\optx}) = 0$ with $\optf_i, \opth_i: \R^{n}\rightarrow\R$. This leads to the optimization problem in \textit{standard form}
-\begin{equation}
-\begin{aligned}
-\minimizex{\vec{\optx}} \optf_0(\vec{\optx}) \\
-\st \optf_i(\vec{\optx}) \leq 0 ,\quad i=1\ldots m \\
-\stff \opth_i(\vec{\optx}) = 0 ,\quad i=1\ldots p.
-\end{aligned}
-\label{eq:optstandard}
-\end{equation}
-A point $\vec{\optx}$ is called \textit{feasible}, if it satisfies all constraints. The \textit{optimal value} $\opt{p}$ is defined as
+Large models with billions of parameters require substantial memory for model weights and intermediate activations. This challenge is significant for inference because transformer blocks must retain token representations across layers, and each layer adds to the total working memory.
+
+\section{Inference challenges for large models}
+
+Resource-efficient inference is concerned with reducing the practical cost of deploying large generative models. Three main resource categories are:
+\begin{itemize}
+    \item \textbf{Compute:} the number of floating-point operations (FLOPs) executed during a forward pass.
+    \item \textbf{Memory:} storage needed for model weights, activations and temporary buffers.
+    \item \textbf{Latency and energy:} time to generate output and power consumed during inference.
+\end{itemize}
+
+Transformer-based generative models are especially demanding in these dimensions. The total compute for a decoder-only model with $N$ layers is roughly proportional to $N (L^{2} d + L d^{2})$, and the memory footprint is dominated by the weight matrices and attention context \cite{Brown2020}.
+
+Scaling laws for language models show that larger models tend to generalize better, but they also demand more resources for inference \cite{Brown2020}. For many applications, the goal is therefore not to maximize raw model size, but to maximize inference efficiency while maintaining acceptable task performance.
+
+\section{Resource-efficient inference}
+
+Resource-efficient inference aims to preserve the accuracy of a generative model while reducing its runtime requirements. The objective can be expressed informally as:
 \begin{equation*}
-\opt{p} = \inf \Big\{ \optf_0(\vec{\optx})\ \big| \ \optf_i(\vec{\optx}) \leq 0,\ i=1\ldots m,\ \opth_i(\vec{\optx})=0,\ i=1\ldots p  \Big\}.
+\text{minimize}_{\text{model, schedule}} \; \text{cost}_{\text{inference}} \quad \text{subject to} \quad \text{quality} \geq \text{threshold}.
 \end{equation*}
 
-\subsection[Non-negative least squares]{\Acf{nnls}}
-\newcommand{\lsa}{a}
-\newcommand{\lsx}{x}
-\newcommand{\lsb}{b}
+A practical definition of cost depends on the deployment scenario. For mobile or edge systems, memory and energy are often the most important constraints. For cloud services, latency and throughput may be primary.
 
-The \ac{nnls} problem is a special optimization problem with several applications in different fields. It denotes as
-\begin{equation}
-\begin{aligned}
-\minimizex{\vec{\lsx}} \frac{1}{2} \norm{\mat{\lsa}\vec{\lsx}-\vec{\lsb}}{2}^{2} \\
-\st \vec{\lsx} \geq \zerovec{n}. \\
-\end{aligned}
-\label{eq:nnls}
-\end{equation}
-Comparing \ref{eq:nnls} with the optimization problem in standard form~\ref{eq:optstandard}, the objective function $\optf_0: \R^{n}\rightarrow\R$ and inequality constraint functions $\optf_i: \R^{n}\rightarrow\R,\ i=1\ldots n$ are
-\begin{equation*}
-\begin{aligned}
-\optf_0(\vec{\lsx}) &= \frac{1}{2} \norm{\mat{\lsa}\vec{\lsx}-\vec{\lsb}}{2}^{2} \\
-\optf_i(\vec{\lsx}) &= -\vecidx{\lsx}{i} ,\quad i=1\ldots n \\
-\end{aligned}
-\end{equation*}
+Because large models are already trained on abundant data, the most common efficiency methods are applied after or during training. These methods include model compression, adaptive inference strategies, and hardware-aware optimization. Each approach aims to reduce the effective inference burden without sacrificing the model's generative capabilities.
 
 

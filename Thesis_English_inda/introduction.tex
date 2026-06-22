@@ -1,25 +1,27 @@
 % !TEX root = thesis.tex
 \chapter{Introduction}\label{sec:intro}
 
-In this \namecref{sec:intro} the thesis is introduced. \Cref{sec:motivation} presents the motivation for the chosen topic, \ref{sec:aims} describes the aims of the thesis and \ref{sec:structure} outlines the content.
+Large generative models have advanced the state of the art in natural language processing, code generation and multimodal reasoning. Since the transformer architecture was introduced, model capacity has grown from millions to hundreds of billions of parameters, and inference latency has become the primary bottleneck for practical deployment \cite{Vaswani2017, Brown2020}.
 
 \section{Motivation}\label{sec:motivation}
 
-Since the introduction of deep learning, the field of machine learning has seen a tremendous growth. In particular, large generative models have shown impressive capabilities in various domains, such as natural language processing and computer vision. However, these models often require significant computational resources for inference, which limits their accessibility and applicability in real-world scenarios. Therefore, there is a growing interest in developing resource-efficient inference techniques for large generative models. This thesis aims to explore and evaluate various approaches to achieve resource-efficient inference while maintaining the performance of large generative models.
+Large language models pose a challenge for deployment outside datacenters because inference requires both high memory bandwidth and large amounts of compute. For interactive applications and edge devices, the traditional strategy of using full-scale models is often infeasible. Resource-efficient inference therefore seeks a balanced trade-off: preserving model quality while reducing runtime cost, energy consumption and memory footprint \cite{Hinton2015, Sanh2019}.
+
+This seminar focuses on the techniques that enable inference for \acp{llm} beyond research prototypes. The motivation is to make these models accessible in resource-constrained environments such as mobile hardware, embedded systems and latency-critical services.
 
 \section{Aims}\label{sec:aims}
 
-The main aims of this thesis are as follows:
+The main aims of this thesis are:
 \begin{itemize}
-    \item To review and analyze existing techniques for resource-efficient inference in large generative models.
-    \item To propose novel methods for improving the efficiency of inference in large generative models.
-    \item To evaluate the proposed methods on benchmark datasets and compare their performance with existing techniques.
-    \item To provide insights and recommendations for future research in the field of resource-efficient inference in large generative models.
+    \item Review the fundamental bottlenecks of large generative model inference and the role of transformer architectures in these costs.
+    \item Analyze established efficiency techniques such as pruning, quantization and knowledge distillation, and explain how they reduce inference resource demands.
+    \item Present system-level and algorithmic strategies that are relevant for deploying \acp{llm} in realistic settings.
+    \item Summarize the most promising directions for future research on resource-aware inference of generative models.
 \end{itemize}
 
 \section{Thesis structure}\label{sec:structure}
 
-The thesis is structured as follows: \Cref{sec:theory} provides a theoretical background on large generative models and resource-efficient inference techniques. \Cref{sec:methods} describes the proposed methods for improving inference efficiency. Finally, \Cref{sec:conclusion} summarizes the findings and discusses future research directions.
+This seminar is organized as follows. \Cref{sec:theory} presents the theoretical foundations of large generative models and the main sources of inference cost. \Cref{sec:methods} discusses resource-efficient inference methods, including compression and adaptive execution. \Cref{sec:conclusion} closes the paper with a summary of findings and recommendations for future work.
 
 
 

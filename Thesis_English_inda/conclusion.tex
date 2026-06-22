@@ -1,0 +1,12 @@
+% !TEX root = thesis.tex
+\chapter{Conclusion and future work}\label{sec:conclusion}
+
+Resource-efficient inference for large generative models is a rapidly evolving field. The main strategies are model compression, adaptive inference and hardware-aware optimization.
+
+Pruning, quantization and distillation each provide a way to decrease runtime cost while preserving model quality. These methods are especially useful when the deployment environment has fixed memory or compute limits.
+
+Adaptive inference techniques such as conditional computation and early exits can further reduce average inference cost by adapting the computation to the input. Hardware-aware optimizations add another layer of efficiency by exploiting platform-specific features.
+
+Future work should investigate how these methods can be combined in a unified inference pipeline. In particular, the interaction between low-bit quantization and dynamic execution remains an important research direction. Evaluating these techniques on real-world edge devices and latency-critical applications will be essential to understand their practical benefits.
+
+In summary, resource-efficient inference is not a single solution but a collection of complementary methods. By carefully choosing compression, adaptation and hardware-aware techniques, it is possible to make large generative models more accessible and deployable outside datacenter-scale infrastructure.

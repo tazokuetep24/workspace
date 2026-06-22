@@ -1,0 +1,56 @@
+% !TEX root = thesis.tex
+\chapter{Resource-efficient inference methods}\label{sec:methods}
+
+This chapter reviews the most important techniques for reducing the cost of inference in large generative models. The methods are grouped into model compression, adaptive execution, and hardware-aware inference.
+
+\section{Model compression}
+
+Model compression reduces the effective size of a trained model while preserving task performance. The principal families of compression methods are pruning, quantization, and distillation.
+
+\subsection{Pruning}
+
+Pruning removes weights or substructures that contribute little to the model's output. Unstructured pruning eliminates individual parameters, producing sparse matrices that can be exploited by specialized sparse kernels. Structured pruning removes whole neurons, attention heads or transformer blocks, which is more amenable to efficient implementation on current hardware.
+
+A class of methods known as movement pruning adapts sparsity during fine-tuning, using gradient signals to determine which weights should remain active \cite{Sanh2019}. This approach maintains accuracy by only removing weights that contribute little to the final loss.
+
+\subsection{Quantization}
+
+Quantization replaces high-precision model weights and activations with lower-bit representations. Typical schemes use 8-bit integer quantization, but more aggressive formats such as 4-bit and mixed precision are now common for large transformers.
+
+Quantization reduces memory footprint and increases throughput because smaller data types require less bandwidth and can be processed by faster hardware arithmetic units. For transformer inference, quantizing attention weights and feed-forward network matrices is particularly effective because these layers consume most of the compute budget.
+
+\subsection{Knowledge distillation}
+
+Knowledge distillation transfers knowledge from a large teacher model into a smaller student model \cite{Hinton2015}. During training, the student learns to mimic the teacher's output distribution, which often leads to improved performance compared to training the smaller model from scratch.
+
+In the context of generative models, distillation can produce compact decoders that retain high-quality text generation while significantly lowering inference cost. Distilled models are thus a practical way to deploy resource-efficient LLMs on constrained hardware.
+
+\section{Adaptive inference}
+
+Adaptive inference methods change the amount of computation dynamically depending on the input or the current model state. These techniques are attractive because they focus resources where they are most needed.
+
+\subsection{Dynamic token processing}
+
+For autoregressive generation, not every token requires the same amount of computation. Conditional computation mechanisms can adjust the depth or width of the network based on token importance. Early-exit architectures allow the model to stop processing a token after a few layers when the output is already confident, saving both compute and latency.
+
+\subsection{Conditional computation and sparsity}
+
+Conditional computation activates only a subset of the model for each input. Examples include mixture-of-experts layers and sparse attention patterns. These techniques reduce actual runtime cost by avoiding full model evaluation, although they may require careful engineering to achieve hardware speedups.
+
+\section{Hardware-aware optimization}
+
+Hardware-aware optimization tailors inference to the capabilities of the target platform. This includes the use of mixed precision arithmetic, fused kernels, and execution optimizations provided by inference engines.
+
+On modern accelerators, combining quantized weights with optimized matrix multiplication kernels can yield large speedups. For edge deployment, reducing memory access by using compact weight formats and reuse-friendly execution schedules is often more important than raw FLOP reduction.
+
+\section{Evaluation of resource-efficient inference}
+
+Practical evaluation must consider the target deployment scenario. Useful metrics include:
+\begin{itemize}
+    \item Throughput (tokens per second)
+    \item Latency per token or per prompt
+    \item Memory footprint for weights and activations
+    \item Model quality, typically measured via benchmark accuracy or likelihood
+\end{itemize}
+
+The best inference strategy depends on whether the goal is lower latency, reduced energy consumption, or smaller memory usage. For example, a compressed but still accurate model may be the best choice for mobile devices, while dynamic inference may be preferable when latency varies with input complexity.
