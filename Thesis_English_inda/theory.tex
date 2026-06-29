@@ -1,18 +1,123 @@
 % !TEX root = thesis.tex
-\chapter{The Inference Process and its Bottlenecks}\label{chap:inference}
 
-This chapter traces the complete forward pass of a decoder-only Transformer from raw input text to a generated token, identifies the principal resource bottlenecks at each stage, and explains why those bottlenecks are not always confined to the inference phase alone. The presentation is intentionally concise but structured, as the bottlenecks identified here form the organising principle for the efficiency techniques surveyed in Chapter~\ref{chap:methods}.
+\chapter{Preliminaries and Taxonomy}\label{chap:preliminaries-and-taxonomy}
+
+\section{Transformer Architecture and Inference Process in Large Language Models}\label{sec:transformer-arch}
+
+Large Language Models (LLMs) are predominantly built on the Transformer architecture, which has become the central neural architecture for modern natural language processing and text generation systems. The reviewed papers describe the Transformer not merely as a sequence-processing model, but as the architectural foundation that enables large-scale language models to represent contextual information, generate text autoregressively, and support a wide range of downstream language tasks ~\cite{bai2024beyond}, ~\cite{zhou2024efficientinf}. In current LLMs, especially decoder-only models such as GPT-style systems, the Transformer architecture is closely coupled with an inference procedure based on next-token prediction. This procedure is effective for open-ended generation, but it also introduces major computational and memory bottlenecks, particularly because attention scales with sequence length and because decoding proceeds token by token \cite{zhou2024efficientinf}, [3].
 
 
-\section{Overview of the Inference Pipeline}\label{sec:inference_overview}
+\subsection{Transformer Architecture}
 
-Inference in a decoder-only Transformer proceeds in two temporally distinct phases that exhibit very different resource profiles.
+The Transformer processes language by first converting discrete text into numerical representations. In a typical LLM pipeline, a tokenizer maps the original input sentence or prompt into a sequence of tokens. These tokens are then passed through an embedding layer, which transforms each token into a continuous vector representation. Since the Transformer does not use recurrence or convolution to encode order, positional information must be added to the token embeddings. Positional encodings or positional embeddings provide the model with information about the relative or absolute location of tokens in the sequence, allowing the architecture to distinguish between otherwise identical tokens occurring at different positions ~\cite{bai2024beyond}, ~\cite{zhou2024efficientinf}.
 
-\textbf{Prefill phase.} All $n_{\text{prompt}}$ tokens of the input prompt are processed simultaneously in a single forward pass. Because all input tokens are available upfront, the attention computation is fully parallelised across the sequence dimension. This phase is \emph{compute-bound}: the dominant cost is the matrix multiplications in the attention and \ac{ffn} sub-layers, and the hardware's arithmetic throughput is the limiting resource.
+After tokenization and embedding, the sequence is processed by a stack of Transformer blocks. The papers describe the standard Transformer block as consisting mainly of a multi-head self-attention module, a feed-forward network, and normalization operations ~\cite{zhou2024efficientinf}. In decoder-based LLMs, these blocks are arranged sequentially, so the hidden representation produced by one block becomes the input to the next. At the end of the stack, a prediction head maps the final hidden representation to a probability distribution over the vocabulary, from which the next token can be selected [3].
 
-\textbf{Decode phase.} After the prefill, the model enters an autoregressive loop: at each step it processes a \emph{single} new token, conditions on the full context (via the \ac{kv} cache), and samples the next token. Because only one token is processed per step, the arithmetic intensity (ratio of floating-point operations to memory bytes accessed) drops by a factor of $n$. The dominant cost is now loading the $P$-parameter weight matrices and the accumulated \ac{kv} cache from \ac{dram} into the compute unit for every generated token. This phase is \emph{memory-bandwidth-bound}~\cite{pope2023efficiently}.
+The core operation of the Transformer is self-attention. Self-attention allows the model to compute contextual representations by relating each token to other tokens in the sequence. For an input representation $X$, the model learns separate linear projections that produce queries $Q$, keys $K$, and values $V$. The attention output is computed by comparing queries with keys, normalizing the resulting similarity scores, and using these weights to aggregate values:
 
-The complete pipeline is illustrated in Figure~\ref{fig:inference_pipeline}.
+\[
+\mathrm{Attention}(Q,K,V)=\mathrm{softmax}\left(\frac{QK^{T}}{\sqrt{d_k}}\right)V,
+\]
+
+where $d_k$ denotes the dimensionality of the key vectors. This formulation enables each token representation to selectively incorporate information from other tokens. The use of the dot product $QK^{T}$ makes the operation sensitive to semantic and syntactic relationships between tokens, while the softmax function converts the similarity scores into normalized attention weights ~\cite{bai2024beyond}, ~\cite{zhou2024efficientinf}.
+
+In practical Transformer models, self-attention is extended to multi-head self-attention. Instead of computing a single attention distribution, the model performs multiple attention operations in parallel using different learned projections. Each head can attend to different relations in the input, and the outputs of all heads are concatenated and projected back into the model’s hidden dimension. This design increases the representational capacity of the model because different heads may capture different dependencies, such as local syntactic relations, long-range semantic relations, or task-specific contextual cues ~\cite{bai2024beyond}, ~\cite{zhou2024efficientinf}.
+
+The feed-forward network is the second major component of the Transformer block. It is usually positioned after the attention module and consists of two linear transformations separated by a nonlinear activation function. If $X$ denotes the input to this module, the feed-forward computation can be written as:
+\begin{equation}
+  \mathrm{FFN}(X)=W_2\sigma(W_1X),
+\end{equation}
+
+
+where $W_1$ and $W_2$ are learned weight matrices and $\sigma$ is a nonlinear activation function ~\cite{zhou2024efficientinf}. While self-attention mixes information across token positions, the feed-forward network transforms each token representation independently in the feature dimension. Together, attention and feed-forward layers allow the Transformer to combine sequence-level contextualization with high-dimensional nonlinear feature transformation.
+
+The reviewed sources distinguish between encoder-only, encoder-decoder, and decoder-only language model architectures. Encoder-only models transform input text into contextual representations and are mainly suited for understanding tasks such as classification or semantic analysis. Encoder-decoder models use an encoder to represent an input sequence and a decoder to generate an output sequence, making them suitable for sequence-to-sequence tasks such as translation and summarization. Decoder-only models, which are especially important in current generative LLMs, generate text autoregressively by predicting the next token from the preceding context ~\cite{bai2024beyond}. Because the user’s prompt and all previously generated tokens become the conditioning context, decoder-only models are particularly well aligned with open-ended text generation.
+
+Computational Characteristics of Attention
+
+The strength of self-attention is also the source of one of the major efficiency limitations of Transformer-based LLMs. In the classical Transformer, attention compares every token with every other token in the sequence. Consequently, the attention matrix grows quadratically with the sequence length. The reviewed survey on resource-efficient LLMs characterizes the standard self-attention operation as having time complexity $O(T^2d)$ and memory complexity $O(T^2)$, where $T$ is the sequence length and $d$ is the hidden feature dimension ~\cite{bai2024beyond}. This quadratic scaling becomes increasingly problematic for long prompts and long-context applications.
+
+The inference-focused surveys identify three major sources of inefficiency: large model size, the quadratic complexity of attention, and the autoregressive decoding strategy ~\cite{zhou2024efficientinf}, [3]. Large model size increases the amount of memory required to store weights and raises the cost of moving those weights through the hardware memory hierarchy. Attention increases computational and memory costs as the context length grows. Autoregressive decoding limits parallelism because each generated token depends on the tokens generated before it. These factors jointly affect latency, throughput, memory usage, energy consumption, and deployment cost ~\cite{zhou2024efficientinf}, [3].
+
+Inference Process of Decoder-Only LLMs
+
+Inference is the phase in which a trained LLM uses fixed model parameters to generate an output for a given prompt. In decoder-only LLMs, inference is based on autoregressive language modeling. The model receives an initial token sequence, estimates a probability distribution for the next token, selects or samples a token from that distribution, appends it to the context, and repeats the procedure until a stopping condition is reached. Thus, generation proceeds sequentially, even though many operations inside a single forward pass are parallelizable ~\cite{zhou2024efficientinf}, [3].
+
+The reviewed papers divide LLM inference into two main stages: the prefilling stage and the decoding stage ~\cite{zhou2024efficientinf}, [3]. During the prefilling stage, the model processes the initial prompt tokens. For each Transformer layer, it computes the query, key, and value representations associated with the prompt. The key and value tensors are stored in a key-value cache, commonly called the KV cache. This stage also produces the first output token. Since the entire prompt is processed at once, the prefilling stage contains substantial matrix-matrix operations and is strongly affected by the length of the input sequence ~\cite{zhou2024efficientinf}, [3].
+
+During the decoding stage, the model generates one new token at a time. At each step, the newly generated token is embedded and passed through the Transformer layers. Instead of recomputing keys and values for all previous tokens, the model reuses the KV cache created during prefilling and extends it with the key and value vectors of the new token. In a decoder layer, the current query attends over the concatenation of cached keys and newly computed keys, and the resulting attention output is then passed through the remaining submodules. This cache-based procedure substantially reduces redundant computation compared with recomputing the entire attention history at every step ~\cite{zhou2024efficientinf}, [3].
+
+However, the KV cache introduces its own memory cost. As more tokens are generated, the cache grows with the total sequence length. For long contexts or large batch sizes, the KV cache can become a major component of memory consumption [3]. This is particularly important for serving systems, where many user requests may be processed concurrently. In such settings, memory is consumed not only by the model weights but also by the active KV caches of multiple requests. Therefore, peak memory during inference is approximately determined by the combination of model weights, KV cache, and temporary activations ~\cite{zhou2024efficientinf}, [3].
+
+Latency, Throughput, and Memory Bottlenecks
+
+The inference process is evaluated using several performance indicators. The first-token latency measures the time required to process the prompt and produce the first generated token. This metric mainly reflects the cost of the prefilling stage. The per-output-token latency measures the average time required to generate each subsequent token during decoding. The total generation latency measures the time required to generate the complete output sequence. Throughput can be measured either as generated tokens per second or completed requests per second ~\cite{zhou2024efficientinf}.
+
+The two inference stages differ in their computational behavior. According to the Roofline-based analysis, the prefilling stage often involves larger matrix-matrix multiplications and may become compute-bound, especially for long input sequences. In contrast, the decoding stage is often memory-bound because each step processes only one new token but must repeatedly load large model weights and access the KV cache [3]. This distinction is important because optimization strategies must match the bottleneck. If computation is the limiting factor, low-precision arithmetic or more efficient kernels may improve performance. If memory bandwidth is the limiting factor, reducing parameter size, reducing memory access, improving cache management, or increasing batching efficiency may be more effective [3].
+
+The inference surveys therefore classify efficiency methods according to the level at which they intervene. Data-level methods reduce the amount of input or reorganize output generation, for example by compressing prompts or enabling more parallel generation structures. Model-level methods modify the architecture or representation of the model, for example through efficient attention designs, multi-query or grouped-query attention, quantization, pruning, low-rank factorization, or knowledge distillation. System-level methods optimize inference engines and serving systems through batching, scheduling, memory management, offloading, operator fusion, and distributed execution ~\cite{zhou2024efficientinf}, [3].
+
+Efficiency-Oriented Architectural and Inference Optimizations
+
+The reviewed papers emphasize that improving LLM inference requires addressing both the Transformer architecture and the deployment process. At the architectural level, efficient attention variants aim to reduce the cost of the standard quadratic attention mechanism. Approximate attention methods, kernel-based attention, low-rank attention, sparse attention, and hardware-aware attention attempt to reduce either the number of attention computations or the memory traffic associated with attention ~\cite{bai2024beyond}, ~\cite{zhou2024efficientinf}. Other architectural alternatives, including state-space models, recurrent-like formulations, long-convolution models, and mixture-of-experts designs, are discussed as attempts to preserve modeling capacity while reducing inference cost or improving scalability ~\cite{bai2024beyond}, ~\cite{zhou2024efficientinf}.
+
+At the model-compression level, quantization is particularly important. It reduces storage and memory traffic by representing weights, activations, or KV-cache entries with lower precision. Post-training quantization is attractive because it can be applied after training without fully retraining the model, while quantization-aware training and quantization-aware fine-tuning attempt to preserve accuracy under lower-precision representations ~\cite{zhou2024efficientinf}, [3]. Pruning removes weights, neurons, layers, or other structures considered less important. Structured pruning is usually more hardware-friendly because it removes regular components, whereas unstructured pruning may preserve accuracy but often requires specialized sparse computation support ~\cite{bai2024beyond}, [3]. Low-rank factorization approximates large weight matrices using smaller matrix products, thereby reducing memory usage and the amount of parameter data loaded during decoding ~\cite{zhou2024efficientinf}. Knowledge distillation transfers behavior or internal knowledge from a larger teacher model to a smaller student model, reducing inference cost by deploying the smaller model ~\cite{zhou2024efficientinf}, [3].
+
+System-level optimization is equally central because LLM inference is not only an algorithmic problem but also a hardware and serving problem. The Roofline analysis highlights that the same model operation may be compute-bound or memory-bound depending on batch size, sequence length, hardware bandwidth, and numerical precision [3]. Consequently, practical inference systems must manage memory allocation, KV-cache storage, request batching, scheduling, and operator execution carefully. Techniques such as FlashAttention, PagedAttention, offloading, and operator fusion are representative of this system-oriented direction, because they improve the way attention and model execution interact with GPU memory and compute resources ~\cite{bai2024beyond}, ~\cite{zhou2024efficientinf}, [3].
+
+Summary
+
+In summary, the three papers present Transformer-based LLMs as systems whose effectiveness arises from stacked self-attention and feed-forward layers, but whose deployment difficulty arises from the same design choices that make them powerful. Token embeddings and positional information provide the initial representation, multi-head self-attention constructs contextual dependencies, feed-forward networks transform token-wise features, and decoder-only autoregressive prediction enables flexible text generation. During inference, the process separates into prefilling and decoding. Prefilling processes the prompt and initializes the KV cache, while decoding repeatedly generates one token, updates the cache, and conditions the next prediction on the expanded context. The principal efficiency challenges are large model size, quadratic attention cost, limited parallelism in autoregressive decoding, and memory traffic associated with model weights and KV caches. The surveyed optimization methods therefore target data, model, system, and hardware levels, aiming to reduce computation, memory usage, memory access, latency, energy consumption, and monetary cost while preserving the quality of generated language.
+
+State-of-the-art \acp{llm} are decoder-only Transformers~\cite{vaswani2017attention}: a learned embedding layer, $L$ stacked identical Transformer blocks, and a language modelling head. We briefly introduce each component; Chapter~\ref{chap:inference} then traces how they combine to form the inference pipeline and where efficiency bottlenecks arise.
+
+\paragraph{Tokenisation and embedding.}
+A tokeniser (e.g.\ Byte-Pair Encoding) converts raw text into a sequence of integer token IDs drawn from a vocabulary of size $|V|$ (typically 32\,000--128\,000). Each ID indexes a learned embedding matrix $\mathbf{W}_E \in \mathbb{R}^{|V| \times d}$ to produce a dense vector in $\mathbb{R}^d$; for a 7B-parameter model $d = 4\,096$. Rotary Position Embedding (\ac{rope})~\cite{vaswani2017attention} is then added element-wise to inject token-order information without expanding the hidden dimension.
+
+\paragraph{Multi-Head Attention.}
+Each Transformer block applies \ac{mha} to its input $\mathbf{X} \in \mathbb{R}^{n \times d}$.
+For each of $h$ heads, projection matrices $\mathbf{W}^Q_i, \mathbf{W}^K_i, \mathbf{W}^V_i \in \mathbb{R}^{d \times d_k}$, with $d_k = d/h$, produce query, key, and value matrices; scaled dot-product attention is then computed:
+\begin{equation}
+  \mathrm{Attention}(\mathbf{Q}_i, \mathbf{K}_i, \mathbf{V}_i)
+    = \operatorname{softmax}\!\Bigl(\tfrac{\mathbf{Q}_i\mathbf{K}_i^\top}{\sqrt{d_k}}\Bigr)\mathbf{V}_i.
+  \label{eq:attention}
+\end{equation}
+The outputs of all heads are concatenated and projected by $\mathbf{W}^O \in \mathbb{R}^{hd_k \times d}$. A causal mask enforces that each position $t$ attends only to positions $\leq t$, enabling auto-regressive generation. The term $\mathbf{Q}_i\mathbf{K}_i^\top \in \mathbb{R}^{n \times n}$ is the root of attention's $\mathcal{O}(n^2)$ cost, which dominates long-context prefill.
+
+\paragraph{Feed-Forward Network.}
+After attention, each position is processed independently by a two-layer \ac{mlp}:
+\begin{equation}
+  \mathrm{FFN}(\mathbf{x}) = \sigma(\mathbf{x}\mathbf{W}_1)\,\mathbf{W}_2,
+  \label{eq:ffn}
+\end{equation}
+where $\mathbf{W}_1 \in \mathbb{R}^{d \times d_{\mathrm{ff}}}$ and $\mathbf{W}_2 \in \mathbb{R}^{d_{\mathrm{ff}} \times d}$. The canonical expansion ratio $d_{\mathrm{ff}} = 4d$ yields $8d^2$ parameters per layer. Modern architectures~\cite{touvron2023llama} use the gated SwiGLU variant, $\mathrm{FFN}(\mathbf{x}) = (\sigma(\mathbf{x}\mathbf{W}_g)\odot\mathbf{x}\mathbf{W}_1)\mathbf{W}_2$, with $d_{\mathrm{ff}} \approx \tfrac{8}{3}d$. Across a full model the \ac{ffn} sub-layers account for approximately 65\% of all parameters and constitute the majority of the memory-bandwidth load during decoding.
+
+\paragraph{Language modelling head.}
+After the final block, $\mathbf{W}_{LM} \in \mathbb{R}^{d \times |V|}$ (weight-tied with $\mathbf{W}_E$) maps the last hidden state to a logit vector over the vocabulary. Softmax converts logits to probabilities; greedy, temperature, top-$k$, or nucleus (top-$p$) sampling selects the next token.
+
+
+\section{The Autoregressive Inference Pipeline}\label{sec:inference-pipeline}
+\label{sec:resources}
+
+Decoder-only \acp{llm} generate text \emph{autoregressively}: each output token is conditioned on all preceding tokens, forcing a sequential loop. Inference divides into two temporally distinct phases with fundamentally different resource profiles.
+
+\paragraph{Prefill phase.}
+All $n_{\mathrm{prompt}}$ input tokens are processed simultaneously in a single parallelised forward pass. The $\mathcal{O}(n^2 d)$ attention matrix product dominates; arithmetic intensity (operations per byte of memory traffic) is high, so this phase is \emph{compute-bound}. Its output is the first generated token and a fully populated \ac{kv} cache.
+
+\paragraph{KV cache.}
+To avoid recomputing attention keys and values at every subsequent decode step, the key and value tensors produced by each layer during prefill are stored in a \emph{\ac{kv} cache}. For a model with $L$ layers, $h$ heads of dimension $d_k$, and a sequence of current length $n$, the cache occupies
+\begin{equation}
+  \text{KV-cache} = 2 \cdot L \cdot h \cdot d_k \cdot n \cdot b_{\mathrm{elem}}\;\;\text{bytes},
+  \label{eq:kvcache}
+\end{equation}
+where $b_{\mathrm{elem}}$ is bytes per element (2 for FP16). For LLaMA-2-7B ($L=32$, $h=32$, $d_k=128$) this amounts to $\approx 0.5$\,MB per token; at 4\,096 tokens the cache reaches $\approx 2$\,GB---one-sixth of the model weights. For long contexts or large batches the cache can exceed the model weights, making it the primary obstacle to edge deployment.
+
+\paragraph{Decode phase.}
+Each decoding step processes a single new token. The attention reduces to an $\mathcal{O}(n d_k)$ vector--matrix product per head, but all $P$ weight matrices and the accumulated \ac{kv} cache must be streamed from off-chip DRAM into the compute unit for every token. Because arithmetic work per byte loaded is $\mathcal{O}(1)$ at batch size 1, the decode phase is \emph{memory-bandwidth-bound}: its throughput is capped by DRAM bandwidth, not peak FLOP/s~\cite{pope2023efficiently}. This asymmetry---compute-bound prefill, bandwidth-bound decode---motivates the distinct optimisation strategies surveyed in Chapter~\ref{chap:methods}.
+
+
+
+
 
 \begin{figure}[ht]
 \centering
@@ -118,23 +223,18 @@ Several of the bottlenecks described above are not exclusive to the inference ph
 
 \textbf{Arithmetic intensity.} The bandwidth-vs-compute characterisation of decode-phase inference stems from the small batch size of autoregressive generation (effective batch size = 1 per concurrent request). Techniques such as continuous batching, which increase the effective batch size by grouping multiple requests, can shift the operating point towards the compute-bound regime---but require system-level changes and are primarily applicable in server settings.
 
-Table~\ref{tab:bottleneck_summary} summarises the main bottlenecks and their primary manifestations in each phase.
+\section{Taxonomy and Key Metrics}\label{sec:taxonomy}
 
-\begin{table}[ht]
-  \centering
-  \caption{Summary of inference bottlenecks by phase. $n$ = sequence length,
-    $P$ = total parameters, $L$ = layers, BW = memory bandwidth.}
-  \label{tab:bottleneck_summary}
-  \small
-  \begin{tabular}{lllll}
-    \hline\hline
-    \textbf{Component} & \textbf{Prefill} & \textbf{Decode} & \textbf{Primary resource} & \textbf{Scales with} \\
-    \hline
-    Attention (arithmetic) & $O(n^2 d)$ & $O(n d)$ & Compute / BW & $n^2$ / $n$ \\
-    \ac{kv} cache (memory) & $O(Ln d_k)$ & $O(Ln d_k)$ & Memory & $n$ \\
-    \ac{ffn} weights (BW) & Compute-bound & BW-bound & BW & $P$ \\
-    LM head & Small & Small & BW & $|V|$ \\
-    \hline\hline
-  \end{tabular}
-\end{table}
+The following terms appear consistently throughout this paper.
+
+\begin{description}
+  \item[\ac{kv} cache.] The stored key and value tensors for all past tokens, maintained to avoid recomputation at each decode step (Equation~\ref{eq:kvcache}).
+  \item[Quantisation.] Representing weights and/or activations at reduced numerical precision---e.g.\ FP16 $\to$ INT8 or INT4---to reduce memory footprint and, on hardware with native low-precision arithmetic, increase throughput.
+  \item[Pruning.] Removing parameters from a trained model. \emph{Unstructured} pruning zeros individual weights; \emph{structured} pruning removes entire rows, columns, heads, or layers to yield a dense, smaller model directly executable on standard hardware.
+  \item[Knowledge Distillation.] Training a compact \emph{student} model to match the output distribution of a larger \emph{teacher}, transferring capability at a fraction of the inference cost.
+  \item[Throughput.] Tokens (or requests) completed per second across all concurrent users; the primary efficiency metric for server-side deployment.
+  \item[Latency.] Elapsed time from request arrival to final-token delivery. \ac{ttft} (time to first token) governs perceived responsiveness; \ac{tpot} (time per output token) governs generation speed.
+  \item[Arithmetic intensity.] Ratio of floating-point operations to bytes of memory traffic, in OPs/byte. Kernels below the hardware ridge point are bandwidth-bound; those above are compute-bound.
+  \item[Edge device.] Any computing platform with constrained memory, power, and compute operating outside a data centre: smartphones, embedded controllers, and automotive compute units.
+\end{description}
 

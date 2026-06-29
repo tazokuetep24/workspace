@@ -7,8 +7,6 @@ You are assisting in drafting a 15-20 page seminar paper on "Resource-Efficient 
 * **Scope/Focus:** The paper should start with a broad, general overview of the topic, but it must quickly **focus specifically on edge devices**.
 * **Nature of the Paper:** There are no hypotheses to confirm. This is an analytical and review-based paper.
 * **Institutional Context:** The paper is being submitted at RWTH Aachen. Ensure the title page design accounts for the RWTH Institute Logo.
-* **Compliance:** The final document must account for a "Declaration on the use of AI in scientific work" (leave a placeholder/section for this).
-* **Target Deadline:** The final deadline for this work is July 1st, 2026.
 
 ## 2. Required Document Structure
 The paper must strictly follow this exact outline:

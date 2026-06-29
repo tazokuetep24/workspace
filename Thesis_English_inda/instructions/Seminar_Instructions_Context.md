@@ -41,3 +41,4 @@ The paper should anchor its research around these explicitly recommended materia
 * **Paper:** "A Review on Edge Large Language Models: Design, Execution, and Applications" [cite: 33].
 * **Repository:** "tiingweii-shii/Awesome-Resource-Efficient-LLM-Papers" (A curated list of resource-efficient LLM papers) [cite: 34].
 * **Articles:** "Why Inference is hard.." [cite: 35] and "Inference Engines (Part 1)" [cite: 36].
+* **Paper:** "A Survey on Efficient Inference for Large  Language Models"

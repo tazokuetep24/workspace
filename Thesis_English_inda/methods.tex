@@ -1,7 +1,7 @@
 % !TEX root = thesis.tex
 \chapter{Towards Efficient Inference: Techniques and Solutions}\label{chap:methods}
 
-Drawing on the bottleneck analysis of Chapter~\ref{chap:inference}, this chapter systematically surveys the techniques that have been developed to reduce the resource demands of \ac{llm} inference. For each technique the discussion covers its core mechanism, the bottleneck it addresses, its accuracy--efficiency trade-off, and its practical implications for edge deployment. Figure~\ref{fig:methods_map} provides an overview of how the techniques presented in this chapter map to the bottlenecks identified in Chapter~\ref{chap:inference}.
+Drawing on the bottleneck analysis of ~\ref{chap:inference}, this chapter systematically surveys the techniques that have been developed to reduce the resource demands of \ac{llm} inference. For each technique the discussion covers its core mechanism, the bottleneck it addresses, its accuracy--efficiency trade-off, and its practical implications for edge deployment. Figure~\ref{fig:methods_map} provides an overview of how the techniques presented in this chapter map to the bottlenecks identified in ~\ref{chap:inference}.
 
 \begin{figure}[ht]
 \centering
@@ -90,11 +90,12 @@ Quantisation is the \emph{de facto} entry point for edge \ac{llm} deployment. To
 
 \subsection{Pruning}\label{sec:pruning}
 
-Pruning removes parameters from the model that contribute least to its predictions, reducing both weight memory and \ac{flop} count.
+Pruning removes parameters from the model that contribute least to its predictions, reducing both weight memory and \ac{flop} count. The two principal strategies---\emph{unstructured} and \emph{structured} pruning---differ in \emph{what} they remove and, consequently, in the hardware speedup they deliver. Figure~\ref{fig:pruning_comparison} illustrates both approaches on a concrete $4\times4$ weight matrix.
 
-\paragraph{Unstructured pruning} sets individual weights to zero based on a criterion (most commonly magnitude: $|w_{ij}| < \theta$). High sparsity levels (80--90\%) can be achieved with minimal quality loss for moderately sized models. However, irregular sparsity patterns yield little practical speedup on hardware without sparse compute support, because memory accesses to weight matrices remain irregular and prevent efficient vectorisation.
 
-\paragraph{Structured pruning} removes entire, regular sub-structures---attention heads, \ac{ffn} rows/columns, or entire layers---producing a dense smaller model that achieves genuine speed improvements on standard hardware without requiring specialised sparse kernels.
+\paragraph{Unstructured pruning} zeros individual weights according to a saliency criterion; the most widely used is \emph{magnitude pruning}: weight $w_{ij}$ is pruned if $|w_{ij}| < \theta$ for a chosen threshold $\theta$. As illustrated in Figure~\ref{fig:pruning_comparison}(b), applying $\theta=0.25$ to $\mathbf{W}$ zeros seven of the sixteen entries (44\% sparsity) while retaining the nine larger-magnitude weights intact. The critical limitation is that the resulting sparse matrix is \emph{structurally identical} to the original: non-zero values follow no regular pattern, so the data must be encoded in a sparse format (e.g., Compressed Sparse Row), and standard dense \ac{blas} routines cannot skip the zeroed positions. Practical speedups therefore require hardware support for sparse arithmetic---available on NVIDIA Ampere \acp{gpu} via 2:4 structured sparsity but largely absent from edge \acp{cpu}. Despite this constraint, high sparsity levels (80--90\%) can be achieved with minimal quality loss for moderately sized models~\cite{bai2024beyond}, making unstructured pruning attractive when the inference platform supports sparse matrix operations.
+
+\paragraph{Structured pruning} removes entire, regular sub-structures---rows or columns of weight matrices, attention heads, \ac{ffn} intermediate dimensions, or whole Transformer layers---yielding a strictly smaller \emph{dense} matrix that requires no sparse encoding and executes efficiently on any standard hardware. As shown in Figure~\ref{fig:pruning_comparison}(c), the row with the smallest $\ell_2$ norm ($\mathbf{r}_1$, norm $\approx 0.78$) is eliminated entirely: the $4\times4$ matrix shrinks to a $3\times4$ matrix, delivering a genuine 25\% reduction in both parameter count and multiply--accumulate operations with no specialised kernel required.
 
 \textbf{LLM-Pruner}~\cite{ma2023llmpruner} automates structured pruning of \acp{llm} by analysing the dependencies between coupled weight groups (e.g., attention heads and their corresponding projection matrices) and applying gradient-based importance estimation to select which groups to remove. After pruning, a brief post-training or \ac{lora}-based fine-tuning step recovers accuracy. In experiments on LLaMA, LLM-Pruner achieves a 20\% parameter reduction with less than 3~points perplexity degradation and no access to the original pre-training data.
 
@@ -209,27 +210,6 @@ The compilation step adds several minutes of one-time overhead but produces depl
 \subsection{vLLM}
 
 \textbf{vLLM}~\cite{kwon2023vllm} is optimised for \emph{server-side} high-throughput serving. Its core contribution is PagedAttention (Section~\ref{sec:kvcache_opt}), which dramatically reduces \ac{kv} cache memory fragmentation. vLLM additionally implements continuous batching, FlashAttention, and quantised inference, providing a production-grade serving stack for data-centre deployment. While not directly targeted at edge hardware, vLLM establishes the baseline for cloud-side efficient inference from which edge-focused frameworks draw inspiration.
-
-\subsection{Comparison and Edge Suitability}
-
-Table~\ref{tab:framework_comparison} compares the three frameworks across the dimensions most relevant to edge deployment.
-
-\begin{table}[ht]
-\centering
-\caption{Comparison of selected inference frameworks for edge deployment.
-  \checkmark\ = supported, $\sim$\ = partial support, $\times$\ = not supported.}
-\label{tab:framework_comparison}
-\small
-\begin{tabular}{lcccc}
-  \hline\hline
-  \textbf{Framework} & \textbf{Edge HW} & \textbf{Mobile} & \textbf{Quantisation} & \textbf{Throughput focus} \\
-  \hline
-  llama.cpp         & \checkmark & \checkmark & \checkmark (2--8 bit) & \checkmark \\
-  MLC-LLM           & \checkmark & \checkmark & \checkmark (4--8 bit) & $\sim$ \\
-  vLLM              & $\times$   & $\times$   & $\sim$ (INT8)          & \checkmark \\
-  \hline\hline
-\end{tabular}
-\end{table}
 
 
 \section{Discussion: Trade-offs and Edge-Specific Considerations}\label{sec:tradeoffs}
