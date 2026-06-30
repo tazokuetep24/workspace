@@ -1,7 +1,7 @@
 % !TEX root = thesis.tex
 \chapter{Towards Efficient Inference: Techniques and Solutions}\label{chap:methods}
 
-Drawing on the bottleneck analysis of ~\ref{chap:inference}, this chapter systematically surveys the techniques that have been developed to reduce the resource demands of \ac{llm} inference. For each technique the discussion covers its core mechanism, the bottleneck it addresses, its accuracy--efficiency trade-off, and its practical implications for edge deployment. Figure~\ref{fig:methods_map} provides an overview of how the techniques presented in this chapter map to the bottlenecks identified in ~\ref{chap:inference}.
+Building upon the previous chapter , this chapter systematically surveys the techniques that have been developed to reduce the resource demands of \ac{llm} inference. For each technique the discussion covers its core mechanism, the bottleneck it addresses, its accuracy--efficiency trade-off, and its practical implications for edge deployment. Figure~\ref{fig:methods_map} provides an overview of how the techniques presented in this chapter map to the bottlenecks identified they address.
 
 \begin{figure}[ht]
 \centering
@@ -67,25 +67,11 @@ Model compression techniques reduce the size of the model itself---shrinking wei
 
 \subsection{Quantisation}\label{sec:quantisation}
 
-Quantisation is the process of representing the floating-point weights (and optionally activations) of a trained model at reduced numerical precision. It is currently the most widely adopted compression technique for edge \ac{llm} deployment because it yields large memory reductions with acceptable quality loss and requires no architectural changes.
+Quantization is a model-compression strategy that lowers the numerical precision of model parameters and/or intermediate values. Instead of storing and computing with high-precision formats such as FP32 or FP16, quantized models use lower-bit formats such as INT8, INT4, or even lower representations. This is especially useful for edge deployment, where memory capacity, bandwidth, energy consumption, and computational resources are limited. However, quantizing large language models is more difficult than quantizing many conventional neural networks because Transformer architectures contain attention layers, high-dimensional hidden states, and activation distributions with large dynamic ranges. These properties make LLMs sensitive to numerical approximation, so aggressive quantization can reduce model quality if it is not carefully controlled. \cite{yue2024reviewonedge}
 
-\paragraph{Why quantisation helps.}
-A weight stored in \ac{fp16} occupies 2~bytes. Representing it instead in 8-bit integer format (\ac{int8}) halves weight memory and doubles arithmetic throughput on hardware that natively supports \ac{int8} matrix multiply (e.g., NVIDIA Tensor Cores, ARM Cortex-A78 NEON). Reducing to 4-bit integers (\ac{int4}) achieves a 4$\times$ compression relative to \ac{fp16}, enabling a 7B model to fit in as little as 3.5~GB of memory.
+Existing LLM quantization methods can be broadly divided into two categories: weight-only quantization and weight-activation co-quantization. Weight-only quantization reduces the precision of the model’s stored parameters while usually keeping activations in higher precision. This mainly lowers memory usage and can improve inference efficiency. Examples include LLM.int8(), which enables 8-bit matrix multiplication for Transformer layers, GPTQ, which performs post-training weight quantization using approximate second-order information, and AWQ, which identifies important weight channels using activation statistics and protects them from excessive quantization error. These methods show that substantial compression is possible, but handling outlier or highly sensitive weights remains an important challenge. \cite{yue2024reviewonedge}
 
-\paragraph{Post-Training Quantisation (\acs{ptq}).}
-In \ac{ptq}, a fully trained model is quantised without further gradient-based updates. The simplest approach, round-to-nearest (RTN), maps each weight $w$ to the nearest representable integer value; it is fast but introduces quantisation error that can significantly degrade perplexity below 4 bits.
-
-More sophisticated \ac{ptq} methods achieve substantially better accuracy. \textbf{GPTQ}~\cite{frantar2023gptq} applies a second-order optimisation using the inverse Hessian of the layer-wise reconstruction error to determine quantisation order and compensate remaining weights for the quantisation error of previously quantised weights. This allows accurate weight-only quantisation to \ac{int4} with less than 1~point of perplexity increase on LLaMA-class models.
-
-\textbf{AWQ}~\cite{lin2024awq} takes a complementary perspective: it observes that the importance of a weight is correlated with the magnitude of the corresponding activation, and that protecting a small fraction (1\%) of salient weights in higher precision (while quantising the rest to INT4) preserves most of the model quality. AWQ is activation-\emph{aware} in the sense that it uses a small calibration dataset to identify these salient channels before quantisation.
-
-\textbf{LLM.int8()}~\cite{dettmers2022gpt3int8} addresses quantisation from the activation side. It observes that \ac{llm} activations contain a small number of outlier features with magnitudes 100$\times$ larger than the mean. Quantising these outliers causes disproportionate error. The solution is a mixed-precision decomposition: outlier feature dimensions are kept in \ac{fp16} while the remaining $\sim$99.9\% are multiplied in \ac{int8}, with no loss in model quality at \ac{int8} precision on models above 6.7B parameters.
-
-\paragraph{Quantisation-Aware Training (\acs{qat}).}
-In \ac{qat}, the quantisation operation is simulated during training by inserting "fake quantisation" nodes that round activations and weights during the forward pass but compute gradients through the rounding operation via the straight-through estimator. The model therefore learns to be robust to quantisation noise. \ac{qat} typically achieves better accuracy than \ac{ptq} at very low bit widths (2--4 bits), but requires re-training access to the original data and substantial compute---making it less practical when a model's training data is proprietary.
-
-\paragraph{Edge implications.}
-Quantisation is the \emph{de facto} entry point for edge \ac{llm} deployment. Tools such as llama.cpp (see Section~\ref{sec:system_level}) implement custom 2--8 bit integer formats (GGUF quantisation) specifically optimised for ARM and x86 CPUs, enabling consumer hardware to run 7B and 13B models interactively. The dominant trade-off is quality vs. compression ratio: below 4 bits, perplexity degradation becomes increasingly noticeable, and the optimal bit-width is task-dependent~\cite{bai2024beyond}.
+Weight-activation co-quantization goes further by reducing the precision of both weights and intermediate activations. This can provide additional memory and computational savings, but it is harder because activations in LLMs often contain large outliers and irregular value ranges. Methods such as ZeroQuant and SmoothQuant address this by using more refined scaling or grouping strategies. In particular, SmoothQuant shifts part of the quantization difficulty from activations to weights through mathematically equivalent scaling transformations, enabling efficient 8-bit weight-and-activation quantization with limited accuracy loss. Overall, quantization is one of the most important techniques for making LLM inference feasible on edge devices, but its effectiveness depends on balancing compression, hardware efficiency, and preservation of model accuracy. \cite{yue2024reviewonedge}
 
 
 \subsection{Pruning}\label{sec:pruning}
@@ -93,66 +79,201 @@ Quantisation is the \emph{de facto} entry point for edge \ac{llm} deployment. To
 Pruning removes parameters from the model that contribute least to its predictions, reducing both weight memory and \ac{flop} count. The two principal strategies---\emph{unstructured} and \emph{structured} pruning---differ in \emph{what} they remove and, consequently, in the hardware speedup they deliver. Figure~\ref{fig:pruning_comparison} illustrates both approaches on a concrete $4\times4$ weight matrix.
 
 
-\paragraph{Unstructured pruning} zeros individual weights according to a saliency criterion; the most widely used is \emph{magnitude pruning}: weight $w_{ij}$ is pruned if $|w_{ij}| < \theta$ for a chosen threshold $\theta$. As illustrated in Figure~\ref{fig:pruning_comparison}(b), applying $\theta=0.25$ to $\mathbf{W}$ zeros seven of the sixteen entries (44\% sparsity) while retaining the nine larger-magnitude weights intact. The critical limitation is that the resulting sparse matrix is \emph{structurally identical} to the original: non-zero values follow no regular pattern, so the data must be encoded in a sparse format (e.g., Compressed Sparse Row), and standard dense \ac{blas} routines cannot skip the zeroed positions. Practical speedups therefore require hardware support for sparse arithmetic---available on NVIDIA Ampere \acp{gpu} via 2:4 structured sparsity but largely absent from edge \acp{cpu}. Despite this constraint, high sparsity levels (80--90\%) can be achieved with minimal quality loss for moderately sized models~\cite{bai2024beyond}, making unstructured pruning attractive when the inference platform supports sparse matrix operations.
+\paragraph{Unstructured pruning} zeros individual weights according to a saliency criterion; the most widely used is \emph{magnitude pruning}: weight $w_{ij}$ is pruned if $|w_{ij}| < \theta$ for a chosen threshold $\theta$. As illustrated in ~\ref{fig:pruning_comparison}(b), applying $\theta=0.25$ to $\mathbf{W}$ zeros seven of the sixteen entries (44\% sparsity) while retaining the nine larger-magnitude weights intact. The critical limitation is that the resulting sparse matrix is \emph{structurally identical} to the original: non-zero values follow no regular pattern, so the data must be encoded in a sparse format (e.g., Compressed Sparse Row), and standard dense \ac{blas} routines cannot skip the zeroed positions. Practical speedups therefore require hardware support for sparse arithmetic---available on NVIDIA Ampere \acp{gpu} via 2:4 structured sparsity but largely absent from edge \acp{cpu}. Despite this constraint, high sparsity levels (80--90\%) can be achieved with minimal quality loss for moderately sized models~\cite{bai2024beyond}, making unstructured pruning attractive when the inference platform supports sparse matrix operations.
 
-\paragraph{Structured pruning} removes entire, regular sub-structures---rows or columns of weight matrices, attention heads, \ac{ffn} intermediate dimensions, or whole Transformer layers---yielding a strictly smaller \emph{dense} matrix that requires no sparse encoding and executes efficiently on any standard hardware. As shown in Figure~\ref{fig:pruning_comparison}(c), the row with the smallest $\ell_2$ norm ($\mathbf{r}_1$, norm $\approx 0.78$) is eliminated entirely: the $4\times4$ matrix shrinks to a $3\times4$ matrix, delivering a genuine 25\% reduction in both parameter count and multiply--accumulate operations with no specialised kernel required.
+\paragraph{Structured pruning} removes entire, regular sub-structures---rows or columns of weight matrices, attention heads, \ac{ffn} intermediate dimensions, or whole Transformer layers---yielding a strictly smaller \emph{dense} matrix that requires no sparse encoding and executes efficiently on any standard hardware. As shown in ~\ref{fig:pruning_comparison}(c), the row with the smallest $\ell_2$ norm ($\mathbf{r}_1$, norm $\approx 0.78$) is eliminated entirely: the $4\times4$ matrix shrinks to a $3\times4$ matrix, delivering a genuine 25\% reduction in both parameter count and multiply--accumulate operations with no specialised kernel required.
 
-\textbf{LLM-Pruner}~\cite{ma2023llmpruner} automates structured pruning of \acp{llm} by analysing the dependencies between coupled weight groups (e.g., attention heads and their corresponding projection matrices) and applying gradient-based importance estimation to select which groups to remove. After pruning, a brief post-training or \ac{lora}-based fine-tuning step recovers accuracy. In experiments on LLaMA, LLM-Pruner achieves a 20\% parameter reduction with less than 3~points perplexity degradation and no access to the original pre-training data.
+% ============================================================
+%  Unstructured vs. Structured Pruning -- TikZ figure
+% ============================================================
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{%
+% ---------- colour palette ----------
+\definecolor{keepfill}{RGB}{210,230,250}   % light blue  = kept weight
+\definecolor{keepedge}{RGB}{70,110,180}
+\definecolor{zerofill}{RGB}{235,235,235}   % light grey  = pruned weight
+\definecolor{zeroedge}{RGB}{150,150,150}
+\definecolor{rowedge}{RGB}{200,60,60}      % red          = row being removed
+\definecolor{rowfill}{RGB}{250,225,225}
+\definecolor{newedge}{RGB}{60,150,90}      % green        = surviving dense block
+\begin{tikzpicture}[
+    every node/.style={font=\small},
+    cell/.style={draw=keepedge, fill=keepfill, minimum size=1.05cm, very thick},
+    zcell/.style={draw=zeroedge, fill=zerofill, minimum size=1.05cm, thick},
+    rcell/.style={draw=rowedge, fill=rowfill, minimum size=1.05cm, thick},
+    capt/.style={font=\bfseries\small, align=center},
+    sub/.style={font=\scriptsize, align=center, text width=4.2cm},
+  ]
 
-\paragraph{Head pruning} specifically targets attention heads. Studies have shown that many attention heads learn redundant or near-uniform patterns and can be removed without quality loss~\cite{bai2024beyond}. Removing $k$ heads out of $h$ per layer reduces the attention \ac{kv} footprint proportionally, providing a complementary benefit to techniques that reduce \ac{kv} cache size.
+% ================================================================
+%  Macro: draws a 4x4 grid of weight cells at origin (x0,y0).
+%  #1 = x-offset, #2 = y-offset, #3 = matrix name (for fit/labels)
+%  Cell contents and styles are passed via the \cellval / \cellsty
+%  arrays defined right before each call (see below).
+% ================================================================
 
-\paragraph{Layer pruning} removes entire Transformer blocks. Because blocks are applied sequentially, removing a block reduces latency proportionally. Empirical results on LLaMA-2 show that removing up to 25\% of layers causes less than 5\% perplexity increase on standard benchmarks; the degradation is larger for tasks requiring deep reasoning chains.
+% ----------------------------------------------------------------
+% PANEL (a): original dense matrix W
+% ----------------------------------------------------------------
+\begin{scope}[xshift=0cm]
+  \foreach \r/\rowvals in {
+      0/{0.45,-0.40,0.30,0.40},
+      1/{0.85,0.10,-0.90,0.20},
+      2/{-0.15,0.95,0.05,-0.88},
+      3/{0.92,-0.05,0.18,-0.22}}
+    {
+      \foreach \v [count=\c from 0] in \rowvals
+        \node[cell] (a-\r-\c) at (\c*1.05, -\r*1.05) {\v};
+    }
+  \node[capt] at (1.575,1.0) {(a) Original $W$\\(4$\times$4, 16 params)};
+  \node[sub]  at (1.575,-4.85) {Dense matrix: every entry\\is stored and multiplied\\(no zeros, no skipped work).};
 
-\paragraph{Edge implications.}
-Structured pruning is particularly attractive for edge deployment because the resulting model is simply a smaller version of the original and requires no specialised runtime. A pruned-then-quantised 7B model can realistically be served on a high-end smartphone: pruning to a 5B effective parameter count followed by INT4 quantisation reduces memory from 14~GB to approximately 2.5~GB.
+  % row labels
+  \foreach \r/\lab in {0/$r_1$,1/$r_2$,2/$r_3$,3/$r_4$}
+    \node[anchor=east] at (-0.75,-\r*1.05) {\lab};
+\end{scope}
+
+% ----------------------------------------------------------------
+% PANEL (b): unstructured (magnitude) pruning, theta = 0.25
+% Each cell is listed explicitly as "kept" (cell) or "pruned" (zcell,
+% shown as 0) -- easiest to hand-edit if you change the example matrix.
+% ----------------------------------------------------------------
+\begin{scope}[xshift=6.0cm]
+  % row 0 -- all |w| >= 0.25, nothing pruned
+  \node[cell]  at (0*1.05,-0*1.05) {0.45};
+  \node[cell]  at (1*1.05,-0*1.05) {-0.40};
+  \node[cell]  at (2*1.05,-0*1.05) {0.30};
+  \node[cell]  at (3*1.05,-0*1.05) {0.40};
+  % row 1
+  \node[cell]  at (0*1.05,-1*1.05) {0.85};
+  \node[zcell] at (1*1.05,-1*1.05) {0};
+  \node[cell]  at (2*1.05,-1*1.05) {-0.90};
+  \node[zcell] at (3*1.05,-1*1.05) {0};
+  % row 2
+  \node[zcell] at (0*1.05,-2*1.05) {0};
+  \node[cell]  at (1*1.05,-2*1.05) {0.95};
+  \node[zcell] at (2*1.05,-2*1.05) {0};
+  \node[cell]  at (3*1.05,-2*1.05) {-0.88};
+  % row 3
+  \node[cell]  at (0*1.05,-3*1.05) {0.92};
+  \node[zcell] at (1*1.05,-3*1.05) {0};
+  \node[zcell] at (2*1.05,-3*1.05) {0};
+  \node[zcell] at (3*1.05,-3*1.05) {0};
+
+  \node[capt] at (1.575,1.0) {(b) Unstructured\\pruning ($\theta{=}0.25$)};
+  \node[sub]  at (1.575,-4.85)
+    {7 of 16 entries zeroed\\(44\% sparsity); irregular,\\scattered pattern $\Rightarrow$ needs\\a sparse format (e.g.\ CSR)\\and sparse-aware kernels.};
+
+  \foreach \r/\lab in {0/$r_1$,1/$r_2$,2/$r_3$,3/$r_4$}
+    \node[anchor=east] at (-0.75,-\r*1.05) {\lab};
+
+  % threshold annotation, to the right of the matrix (mirrors the
+  % row-norm labels next to panel (c)) -- kept narrow so it stays
+  % clear of panel (c)
+  \node[anchor=west, draw=keepedge!70!black, rounded corners, fill=yellow!12,
+        font=\scriptsize, align=left, text width=1.7cm, inner sep=2pt]
+    at (4.05,-1.575) {prune $w_{ij}$ if\\[1pt] $|w_{ij}|<\theta$};
+\end{scope}
+
+% ----------------------------------------------------------------
+% PANEL (c): structured pruning, remove row with smallest L2 norm
+% ----------------------------------------------------------------
+\begin{scope}[xshift=12cm]
+  % full matrix with r1 marked for removal
+  \foreach \r/\rowvals in {
+      0/{0.45,-0.40,0.30,0.40},
+      1/{0.85,0.10,-0.90,0.20},
+      2/{-0.15,0.95,0.05,-0.88},
+      3/{0.92,-0.05,0.18,-0.22}}
+    {
+      \foreach \v [count=\c from 0] in \rowvals
+        {
+          \ifnum\r=0
+            \node[rcell] (c-\r-\c) at (\c*1.05, -\r*1.05) {\v};
+          \else
+            \node[cell]  (c-\r-\c) at (\c*1.05, -\r*1.05) {\v};
+          \fi
+        }
+    }
+
+  % norm labels to the right of each row
+  \node[anchor=west, font=\scriptsize, color=rowedge!80!black] at (4.4,-0*1.05) {$\|r_1\|_2{\approx}0.78$ (min)};
+  \node[anchor=west, font=\scriptsize] at (4.4,-1*1.05) {$\|r_2\|_2{\approx}1.26$};
+  \node[anchor=west, font=\scriptsize] at (4.4,-2*1.05) {$\|r_3\|_2{\approx}1.31$};
+  \node[anchor=west, font=\scriptsize] at (4.4,-3*1.05) {$\|r_4\|_2{\approx}0.96$};
+
+  % strike-through cross on row r1
+  \draw[rowedge, very thick] (-0.5,0.5) -- (3.7,-0.5);
+
+  \foreach \r/\lab in {0/$r_1$,1/$r_2$,2/$r_3$,3/$r_4$}
+    \node[anchor=east] at (-0.75,-\r*1.05) {\lab};
+
+  \node[capt] at (1.575,1.0) {(c) Structured pruning\\(drop $r_1$)};
+
+  % arrow down to the resulting smaller dense matrix
+  \draw[-{Latex[length=3mm]}, very thick] (1.575,-4.3) -- (1.575,-5.1);
+  \node[font=\scriptsize] at (3.4,-4.7) {remove entire row};
+
+  % resulting 3x4 dense matrix, highlighted green
+  \begin{scope}[yshift=-5.9cm]
+    \foreach \r/\rowvals in {
+        0/{0.85,0.10,-0.90,0.20},
+        1/{-0.15,0.95,0.05,-0.88},
+        2/{0.92,-0.05,0.18,-0.22}}
+      {
+        \foreach \v [count=\c from 0] in \rowvals
+          \node[cell] (c2-\r-\c) at (\c*1.05, -\r*1.05) {\v};
+      }
+    \node[draw=newedge, very thick, rounded corners, fit=(c2-0-0)(c2-2-3), inner sep=2pt] {};
+    \node[sub] at (1.575,-3.55) {3$\times$4 dense matrix;\\25\% fewer params and MACs,\\no sparse kernel needed.};
+  \end{scope}
+\end{scope}
+
+% ----------------------------------------------------------------
+% Legend (applies to all three panels) - arranged in two rows
+% ----------------------------------------------------------------
+\begin{scope}[yshift=-10.7cm, xshift=8.5cm]
+  % First row
+  \node[cell, minimum size=0.5cm] (lg1) at (-6.0,0) {};
+  \node[anchor=west, font=\scriptsize] at ($(lg1.east)+(0.15,0)$) {kept weight};
+
+  \node[zcell, minimum size=0.5cm] (lg2) at (-2.8,0) {};
+  \node[anchor=west, font=\scriptsize] at ($(lg2.east)+(0.15,0)$) {pruned ($=0$)};
+
+  % Second row
+  \node[rcell, minimum size=0.5cm] (lg3) at (-6.0,-0.7) {};
+  \node[anchor=west, font=\scriptsize] at ($(lg3.east)+(0.15,0)$) {row marked for removal};
+
+  \node[draw=newedge, very thick, rounded corners, minimum size=0.5cm] (lg4) at (-2.8,-0.7) {};
+  \node[anchor=west, font=\scriptsize] at ($(lg4.east)+(0.15,0)$) {surviving dense block};
+\end{scope}
+
+\end{tikzpicture}
+}% end resizebox
+\caption{Comparison of unstructured and structured pruning strategies on a $4\times4$ weight matrix. (a)~The original dense matrix stores and multiplies all 16 parameters. (b)~Unstructured magnitude pruning zeros individual weights below threshold $\theta{=}0.25$, achieving 44\% sparsity but requiring sparse matrix formats and specialised kernels. (c)~Structured pruning removes the entire row with smallest $\ell_2$ norm, yielding a $3\times4$ dense matrix that delivers genuine 25\% savings in both parameters and operations without specialised hardware support.}
+\label{fig:pruning_comparison}
+\end{figure}
 
 
 \subsection{Knowledge Distillation}\label{sec:distillation}
 
-Knowledge distillation (\acs{kd})~\cite{hinton2015distilling} trains a smaller \emph{student} model to mimic the behaviour of a larger \emph{teacher} model. Rather than training the student on hard labels (the ground-truth next token), the student is trained to match the teacher's soft probability distribution over the vocabulary. Because the teacher's output distribution encodes information about semantically related tokens---including near-misses and plausible alternatives---the student receives a richer training signal than hard-label supervision.
+Knowledge distillation (\acs{kd})~\cite{hinton2015distilling} trains a smaller \emph{student} model to mimic the behaviour of a Knowledge Distillation (KD) is a model compression technique in which a smaller student model is trained to imitate the behavior of a larger teacher model. In the context of large language models, KD is used to transfer knowledge and capabilities from powerful LLMs into smaller language models, reducing memory and computational requirements while preserving as much performance as possible. KD methods for LLMs are commonly divided into white-box and black-box approaches. \cite{zhou2024efficientinf}
 
-\paragraph{Task-specific distillation} fine-tunes a small student on a task-specific corpus using the teacher's outputs as supervision. This produces compact models optimised for narrow applications (e.g., a 1B model for a specific domain), but the student does not generalise beyond the training distribution.
+White-box KD assumes access to the internal components of the teacher model, such as its parameters, hidden representations, intermediate features, or output logits. This allows the student model to learn not only from the teacher’s final predictions, but also from its internal computation process. Existing methods use different strategies, such as aligning teacher and student logits, matching layer-wise features, training with student-generated data, reducing model width and depth, or using specialized student architectures to reduce the capacity gap between teacher and student models. \cite{zhou2024efficientinf}
 
-\paragraph{Task-agnostic / general distillation} trains a student from scratch (or from a pre-trained checkpoint) to mimic the pre-training distribution of the teacher. This is far more expensive (requiring access to large corpora and significant compute) but produces a student that retains general-purpose capabilities.
+Black-box KD is applied when the internal structure and parameters of the teacher model are unavailable, as is often the case with API-based or proprietary LLMs. In this setting, the student model is trained only on the teacher’s generated outputs, such as answers, rationales, demonstrations, or instruction-response pairs. Black-box KD is therefore mainly used to transfer high-level LLM abilities, including in-context learning, chain-of-thought reasoning, and instruction following, by encouraging the smaller model to imitate the observable behavior of the larger model. \cite{zhou2024efficientinf}
 
-\paragraph{White-box vs. black-box distillation.}
-When the teacher's internal representations are accessible (\emph{white-box}), the student can be trained to match not only the output logits but also intermediate hidden states and attention maps, providing additional supervision signal. When only the teacher's output text is available (\emph{black-box}), the student is trained on the teacher-generated text as a dataset.
-
-\paragraph{Edge implications.}
-Distillation is the only compression technique that does not start from a large model: it produces a small model from the outset. For edge deployment, 1B and 3B-parameter models distilled from 70B+ teachers (e.g., Phi-2, Phi-3 from Microsoft) have demonstrated that compact architectures can retain a large fraction of the teacher's reasoning capability when the distillation corpus is carefully curated.
 
 
 \section{Inference-Level Optimisations}\label{sec:inference_opts}
 
 These techniques modify the attention mechanism or the \ac{kv} cache management strategy without altering the model weights. They can be applied at inference time, often transparently to the model.
 
-\subsection{Multi-Query and Grouped-Query Attention}\label{sec:mqa_gqa}
-
-Standard \ac{mha} maintains one independent set of key and value projection matrices per head. With $h$ heads, the \ac{kv} cache therefore stores $h$ distinct key and value tensors per layer and per token, with total per-token cache size $2Lhd_k$.
-
-\textbf{\ac{mqa}}~\cite{shazeer2019mqa} proposes that all query heads share a single key head and a single value head. The \ac{kv} cache therefore collapses to $2L \cdot 1 \cdot d_k$ per token---a factor-of-$h$ reduction. Because the \ac{kv} cache is the second largest contributor to memory consumption after model weights, this reduction is highly significant at edge scale. The trade-off is a slight decrease in model quality (approximately 0.5--1\% on downstream benchmarks), which is generally acceptable~\cite{shazeer2019mqa}.
-
-\textbf{\ac{gqa}}~\cite{ainslie2023gqa} generalises \ac{mqa} by grouping the $h$ query heads into $g$ groups, each sharing one key/value head. With $g = h$ this reduces to standard \ac{mha}; with $g = 1$ to \ac{mqa}. In practice, $g = h/4$ to $h/8$ recovers most of the \ac{mha} quality while approaching \ac{mqa} efficiency. \ac{gqa} has been adopted in LLaMA-2~(70B), LLaMA-3, and Mistral, indicating that the field has largely converged on this as the standard attention variant.
-
-\paragraph{Edge implications.}
-Since \ac{mqa}/\ac{gqa} must be incorporated during pre-training, they are not applicable to already-trained models. However, \ac{gqa} can be retrofitted via a brief fine-tuning step (uptraining from \ac{mha} checkpoints) at a fraction of the original training cost~\cite{ainslie2023gqa}. For new models targeting edge deployment, \ac{gqa} should be considered mandatory.
-
-
-\subsection{FlashAttention}\label{sec:flashattn}
-
-The standard \ac{mha} implementation loads the full $n \times n$ attention score matrix into \ac{hbm} before applying the softmax and value aggregation. For a sequence length of $n = 4096$ tokens with \ac{fp16} precision, this matrix occupies $n^2 \times 2$ bytes $= 32$~MB per head. With 32 heads, this is 1~GB of temporary \ac{hbm} traffic per layer---a dominant bandwidth cost.
-
-\textbf{FlashAttention}~\cite{dao2022flashattention} reformulates the attention computation to avoid materialising the full attention matrix. It tiles the input matrices into blocks that fit entirely in the \ac{gpu}'s fast on-chip \ac{sram}, and fuses the computation of $\mathbf{Q}\mathbf{K}^\top$, softmax, and $\text{softmax}(\cdot)\mathbf{V}$ into a single kernel. This eliminates the round-trip to \ac{hbm} for the intermediate attention matrix, reducing \ac{hbm} accesses from $O(n^2)$ to $O(n)$ while computing the numerically identical result (it is an exact, not approximate, algorithm).
-
-Practically, FlashAttention achieves 2--4$\times$ speedup on attention computation relative to the naive implementation, with proportionally lower energy consumption---making it directly beneficial for edge inference on any hardware with a fast cache hierarchy.
-
-
 \subsection{KV Cache Optimisation}\label{sec:kvcache_opt}
 
-\paragraph{PagedAttention.}
-The \ac{kv} cache grows dynamically with sequence length. In the standard contiguous allocation scheme, each new request pre-allocates a fixed-size maximum-length block of \ac{kv} memory, leading to severe internal fragmentation when requests terminate early. Across thousands of concurrent requests on a server, this wastage can reduce effective throughput by 60--80\%~\cite{kwon2023vllm}.
 
-\textbf{PagedAttention}~\cite{kwon2023vllm}, implemented in the vLLM framework, adapts the virtual memory paging concept to the \ac{kv} cache. Each request's \ac{kv} vectors are stored in fixed-size \emph{pages} that need not be physically contiguous. A page table maps logical to physical page addresses at inference time. This eliminates nearly all internal and external fragmentation, increasing the effective number of concurrent requests that can be served from the same \ac{gpu} memory by 2--4$\times$.
+\textbf{Paged Attention}~\cite{kwon2023vllm}, implemented in the vLLM framework, adapts the virtual memory paging concept to the \ac{kv} cache. Each request's \ac{kv} vectors are stored in fixed-size \emph{pages} that need not be physically contiguous. A page table maps logical to physical page addresses at inference time. This eliminates nearly all internal and external fragmentation, increasing the effective number of concurrent requests that can be served from the same \ac{gpu} memory by 2--4$\times$.
 
 \paragraph{KV cache quantisation.}
 The \ac{kv} cache can itself be stored at reduced precision. Quantising the cached key/value tensors to \ac{int8} halves cache memory with minimal perplexity impact. More aggressive quantisation to INT4 is possible with careful calibration, providing a further 2$\times$ reduction.
@@ -225,18 +346,6 @@ Compression techniques invariably introduce some quality degradation. The magnit
     \item \textbf{Model scale}: larger models exhibit greater robustness to compression. A 70B model quantised to INT4 often outperforms an uncompressed 7B model, making the question "which compressed large model vs. which uncompressed small model" a central practical question for edge deployment.
 \end{itemize}
 
-\subsection{Orthogonality and Composability}
-
-Many of the techniques described in this chapter are \emph{orthogonal}: they address different bottlenecks and can be applied simultaneously. A practical edge stack might combine:
-\begin{enumerate}
-    \item \textbf{Distillation} (at training time) to obtain a smaller base model.
-    \item \textbf{\ac{gqa}} (in the model architecture) to reduce \ac{kv} cache size.
-    \item \textbf{GPTQ or AWQ quantisation} (post-training) to compress weights to INT4.
-    \item \textbf{FlashAttention} (at inference time) to reduce attention bandwidth.
-    \item \textbf{Speculative decoding} (at inference time) to improve throughput.
-    \item \textbf{llama.cpp or MLC-LLM} as the runtime to execute efficiently on ARM/mobile hardware.
-\end{enumerate}
-Applied together, these techniques have enabled 7B-class models to be deployed interactively on smartphones in 2024---an outcome that would have seemed impractical just two years earlier.
 
 \subsection{The Fundamental Edge Constraint: Memory}
 

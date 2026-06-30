@@ -2,19 +2,14 @@
 \chapter{Conclusion}\label{chap:conclusion}
 
 This paper has traced the resource challenges of \ac{llm} inference from first principles through to practical deployment solutions, with a sustained focus on edge hardware as the most demanding deployment target.
+~\ref{chap:intro} established that the four resource dimensions of \ac{llm} inference---compute, memory, memory bandwidth, and energy---are not equally constraining in all settings. On edge devices, memory capacity is the hard, non-negotiable limit: a model that does not fit in \ac{dram} simply cannot run. Memory bandwidth is the dominant performance bottleneck during the decode phase, and energy determines the sustained throughput a device can deliver over time.
 
-Chapter~\ref{chap:intro} established that the four resource dimensions of \ac{llm} inference---compute, memory, memory bandwidth, and energy---are not equally constraining in all settings. On edge devices, memory capacity is the hard, non-negotiable limit: a model that does not fit in \ac{dram} simply cannot run. Memory bandwidth is the dominant performance bottleneck during the decode phase, and energy determines the sustained throughput a device can deliver over time.
+~\ref{chap:preliminaries-and-taxonomy} analysed the inference pipeline step by step and identified its two most resource-intensive components: the self-attention sub-layer, which incurs $O(n^2)$ compute during prefill and a growing \ac{kv} cache during decode.
 
-Chapter~\ref{chap:inference} analysed the inference pipeline step by step and identified its two most resource-intensive components: the self-attention sub-layer, which incurs $O(n^2)$ compute during prefill and a growing \ac{kv} cache during decode, and the \ac{ffn} sub-layer, which accounts for roughly two-thirds of all model parameters and is memory-bandwidth-bound during decode. The chapter also clarified that while the \ac{kv} cache is an inference-specific structure, its size is determined by architectural choices made at training time---meaning that the efficiency of inference is, in part, a function of how thoughtfully the model was designed.
-
-Chapter~\ref{chap:methods} surveyed the state-of-the-art techniques for addressing these bottlenecks. Several key findings emerge from this analysis.
+~\ref{chap:methods} surveyed the state-of-the-art techniques for addressing these bottlenecks. Several key findings emerge from this analysis.
 
 
 \textbf{Quantisation is the single most impactful intervention for edge deployment.} Reducing weight precision from \ac{fp16} to INT4 achieves a 4$\times$ compression of model weights, making 7B-class models feasible on consumer hardware with 4--8~GB of memory. Methods such as GPTQ~\cite{frantar2023gptq} and AWQ~\cite{lin2024awq} demonstrate that this compression can be achieved with minimal perplexity degradation, particularly for models above 7B parameters.
-
-\textbf{\ac{gqa} is now essential architecture.} The reduction of the \ac{kv} cache footprint by a factor of $h/g$ (where $h$ is the number of query heads and $g$ is the number of key-value head groups) is one of the most memory-efficient interventions available. It is cost-free in a newly trained model and recoverable at low cost through uptraining. Given the disproportionate role of \ac{kv} cache in edge memory budgets, \ac{gqa} should be considered a baseline requirement for any model targeting edge deployment.
-
-\textbf{FlashAttention makes long-context inference practical.} By eliminating the quadratic memory traffic of the attention matrix, FlashAttention~\cite{dao2022flashattention} substantially reduces both latency and energy consumption for prefill, and makes longer context windows feasible without exceeding on-chip memory limits.
 
 \textbf{Speculative decoding provides latency improvements without quality loss.} For interactive applications---which are the primary use case for edge inference---reducing latency per generated token is more important than maximising throughput. Speculative decoding~\cite{leviathan2023speculative} directly targets this metric and is composable with other techniques.
 
