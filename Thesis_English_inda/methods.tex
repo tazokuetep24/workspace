@@ -1,62 +1,217 @@
 % !TEX root = thesis.tex
 \chapter{Towards Efficient Inference: Techniques and Solutions}\label{chap:methods}
 
-Building upon the previous chapter , this chapter systematically surveys the techniques that have been developed to reduce the resource demands of \ac{llm} inference. For each technique the discussion covers its core mechanism, the bottleneck it addresses, its accuracy--efficiency trade-off, and its practical implications for edge deployment. Figure~\ref{fig:methods_map} provides an overview of how the techniques presented in this chapter map to the bottlenecks identified they address.
+Building upon the previous chapter, this chapter systematically surveys the techniques that have been developed to reduce the resource demands of \ac{llm} inference. For each technique the discussion covers its core mechanism, the bottleneck it addresses, its accuracy--efficiency trade-off, and its practical implications for edge deployment. \ref{fig:methods_map} provides an overview of how the techniques presented in this chapter map to the bottlenecks identified they address.
 
-\begin{figure}[ht]
+\begin{figure}[htbp]
 \centering
-\begin{tikzpicture}[
-  node distance   = 0.35cm and 0.5cm,
-  bottleneck/.style = {rectangle, draw=red!70, fill=red!8, text width=4.5cm,
-                       text centered, rounded corners=3pt,
-                       minimum height=1.6em, font=\small\bfseries},
-  solution/.style   = {rectangle, draw=blue!70, fill=blue!8, text width=4.3cm,
-                       text centered, rounded corners=3pt,
-                       minimum height=1.4em, font=\small},
-  header/.style     = {font=\small\bfseries, align=center},
-  arrow/.style      = {-{Stealth}, thick, red!60}
+\resizebox{\textwidth}{!}{%
+\begin{forest}
+for tree={
+    grow'=east,
+    parent anchor=east,
+    child anchor=west,
+    anchor=west,
+    edge={draw=black!65, thin},
+    edge path={
+        \noexpand\path[\forestoption{edge}]
+        (!u.parent anchor) -- +(5mm,0)
+        |- (.child anchor)\forestoption{edge label};
+    },
+    rounded corners=3pt,
+    draw=black!75,
+    font=\small,
+    minimum height=2.1em,
+    inner xsep=7pt,
+    inner ysep=3pt,
+    l sep=10mm,
+    s sep=2.5mm,
+    align=center,
+}
+% Root node
+[
+    \rotatebox{90}{Inference Efficiency},
+    fill=yellow!15,
+    minimum width=1.7cm,
+    font=\small\bfseries,
+    anchor=center,
+    parent anchor=east,
+    child anchor=east
+    % -----------------------------------------------------
+    % Model Level
+    [
+        Model Level,
+        fill=cyan!35,
+        minimum width=3.5cm,
+        font=\small\bfseries
+        [
+            Model Compression,
+            fill=cyan!22,
+            minimum width=4.1cm
+            [
+                Quantization,
+                fill=cyan!10,
+                minimum width=4.4cm
+            ]
+            [
+                Pruning,
+                fill=cyan!10,
+                minimum width=4.4cm
+            ]
+            [
+                Knowledge Distillation,
+                fill=cyan!10,
+                minimum width=4.4cm
+            ]
+        ]
+    ]
+    % -----------------------------------------------------
+    % Inference Level
+    [
+        Inference Level,
+        fill=orange!45,
+        minimum width=3.5cm,
+        font=\small\bfseries
+        [
+            Attention-head Reduction,
+            fill=orange!25,
+            minimum width=4.1cm
+            [
+                Multi-Query Attention\\(MQA),
+                fill=orange!12,
+                minimum width=4.4cm
+            ]
+            [
+                Grouped-Query Attention\\(GQA),
+                fill=orange!12,
+                minimum width=4.4cm
+            ]
+        ]
+        [
+            Cache Optimisation,
+            fill=orange!25,
+            minimum width=4.1cm
+            [
+                KV Cache Quantisation,
+                fill=orange!12,
+                minimum width=4.4cm
+            ]
+            [
+                PagedAttention,
+                fill=orange!12,
+                minimum width=4.4cm
+            ]
+        ]
+    ]
+    % -----------------------------------------------------
+    % Attention complexity
+    [
+        Attention Complexity,
+        fill=lime!55,
+        minimum width=3.5cm,
+        font=\small\bfseries
+        [
+            Attention Optimisation,
+            fill=lime!35,
+            minimum width=4.1cm
+            [
+                FlashAttention,
+                fill=lime!17,
+                minimum width=4.4cm
+            ]
+            [
+                Multi-Query Attention\\(MQA),
+                fill=lime!17,
+                minimum width=4.4cm
+            ]
+            [
+                Grouped-Query Attention\\(GQA),
+                fill=lime!17,
+                minimum width=4.4cm
+            ]
+        ]
+    ]
+    % -----------------------------------------------------
+    % FFN bandwidth
+    [
+        FFN Bandwidth,
+        fill=red!25,
+        minimum width=3.5cm,
+        font=\small\bfseries
+        [
+            Parameter Reduction,
+            fill=red!15,
+            minimum width=4.1cm
+            [
+                Quantisation,
+                fill=red!7,
+                minimum width=4.4cm
+            ]
+            [
+                Pruning,
+                fill=red!7,
+                minimum width=4.4cm
+            ]
+        ]
+    ]
+    % -----------------------------------------------------
+    % Sequential decoding
+    [
+        Sequential Decoding,
+        fill=violet!30,
+        minimum width=3.5cm,
+        font=\small\bfseries
+        [
+            Decoding Acceleration,
+            fill=violet!18,
+            minimum width=4.1cm
+            [
+                Speculative Decoding,
+                fill=violet!8,
+                minimum width=4.4cm
+            ]
+        ]
+    ]
+    % -----------------------------------------------------
+    % System Level
+    [
+        System Throughput,
+        fill=gray!35,
+        minimum width=3.5cm,
+        font=\small\bfseries
+        [
+            Request Scheduling,
+            fill=gray!22,
+            minimum width=4.1cm
+            [
+                Continuous Batching,
+                fill=gray!10,
+                minimum width=4.4cm
+            ]
+        ]
+        [
+            Deployment Frameworks,
+            fill=gray!22,
+            minimum width=4.1cm
+            [
+                llama.cpp,
+                fill=gray!10,
+                minimum width=4.4cm
+            ]
+            [
+                vLLM,
+                fill=gray!10,
+                minimum width=4.4cm
+            ]
+        ]
+    ]
 ]
-%% Headers
-\node [header] (h1) at (0,0)   {Bottleneck};
-\node [header] (h2) at (7.5,0) {Technique};
+\end{forest}
+}% end resizebox
 
-%% Bottleneck nodes
-\node [bottleneck, below=0.5cm of h1] (b1) {Weight Memory};
-\node [bottleneck, below=0.45cm of b1] (b2) {KV Cache Memory};
-\node [bottleneck, below=0.45cm of b2] (b3) {Attention $\mathcal{O}(n^2)$};
-\node [bottleneck, below=0.45cm of b3] (b4) {FFN Bandwidth};
-\node [bottleneck, below=0.45cm of b4] (b5) {Sequential Decoding};
-\node [bottleneck, below=0.45cm of b5] (b6) {System Throughput};
-
-%% Solution nodes
-\node [solution, below=0.5cm of h2]   (s1) {Quantisation (PTQ / QAT)};
-\node [solution, below=0.35cm of s1]  (s2) {Pruning};
-\node [solution, below=0.35cm of s2]  (s3) {Knowledge Distillation};
-\node [solution, below=0.35cm of s3]  (s4) {MQA / GQA};
-\node [solution, below=0.35cm of s4]  (s5) {KV Cache Quantisation};
-\node [solution, below=0.35cm of s5]  (s6) {PagedAttention};
-\node [solution, below=0.35cm of s6]  (s7) {FlashAttention};
-\node [solution, below=0.35cm of s7]  (s8) {Speculative Decoding};
-\node [solution, below=0.35cm of s8]  (s9) {Continuous Batching};
-\node [solution, below=0.35cm of s9]  (s10){llama.cpp / MLC-LLM};
-
-%% Mapping arrows
-\draw [arrow] (b1.east) -- (s1.west);
-\draw [arrow] (b1.east) -- (s2.west);
-\draw [arrow] (b1.east) -- (s3.west);
-\draw [arrow] (b2.east) -- (s4.west);
-\draw [arrow] (b2.east) -- (s5.west);
-\draw [arrow] (b2.east) -- (s6.west);
-\draw [arrow] (b3.east) -- (s7.west);
-\draw [arrow] (b3.east) -- (s4.west);
-\draw [arrow] (b4.east) -- (s1.west);
-\draw [arrow] (b5.east) -- (s8.west);
-\draw [arrow] (b6.east) -- (s9.west);
-\draw [arrow] (b6.east) -- (s10.west);
-\end{tikzpicture}
-\caption{Mapping of inference bottlenecks (red) to the efficiency techniques (blue)
-  surveyed in this chapter. Arrows indicate which technique targets which bottleneck;
-  several techniques address multiple bottlenecks simultaneously.}
+\caption{Hierarchical classification of major inference bottlenecks and the
+techniques used to address them. Techniques appearing in multiple branches
+target more than one bottleneck.}
 \label{fig:methods_map}
 \end{figure}
 

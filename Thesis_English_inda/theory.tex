@@ -22,7 +22,7 @@ where, Q, K, and V represent the query, key, and value matrices, which are a com
 
 where \( head_i = Attention(QW_i^Q, KW_i^K,VW_i^V) \) stands for the \textit{i}-th attention head output, and $W^O$ is the output projection matrix. \cite{bai2024beyond} 
 
-As can be seen from the attention formular above, the matrix multiplication between $Q$ and $K^T$, each of dimension $(n \times d_k) and (d_x \times n)$ respectively, brings about a time complexity of $O(n^2)$, where n denotes the input sequence lenght. The subsequent multiplication with the value matrix accounts for a complexity of $O(d)$. Putting these two together, we see that the time complexity for the Attention mechanism amounts to $O(n^2d)$. The time complexity of the Attention mechanism therefore grows quadratically with the input sequence, which could bring about computational difficulties for verly long input sequences. Other than time complexity, it is worth taking a look at memory complexity as well. This amounts to $O(n^2)$ as result of the $(n \times n)$ attention matrix $(QT^k)$ needing to be stored for further computation.
+As can be seen from the attention formular above, the matrix multiplication between $Q$ and $K^T$, each of dimension $(n \times d_k)$ and $(d_x \times n)$ respectively, brings about a time complexity of $O(n^2)$, where n denotes the input sequence lenght. The subsequent multiplication with the value matrix accounts for a complexity of $O(d)$. Putting these two together, we see that the time complexity for the Attention mechanism amounts to $O(n^2d)$. The time complexity of the Attention mechanism therefore grows quadratically with the input sequence, which could bring about computational difficulties for verly long input sequences. Other than time complexity, it is worth taking a look at memory complexity as well. This amounts to $O(n^2)$ as result of the $(n \times n)$ attention matrix $(QT^k)$ needing to be stored for further computation.
 
 
 \section{Inference in LLMs}
@@ -72,7 +72,7 @@ A brief overview of the how inference works in LLMs, can be seen in Fig. 2.1
 \foreach \from/\to in {inp/tok, tok/emb, emb/attn, attn/ffn, ffn/lmh, lmh/eos}
   \draw [arrow] (\from) -- (\to);
 \draw [arrow] (eos.south) -- node[right, font=\footnotesize]{Yes} (out.north);
-\draw [arrow] (eos.east)  -- ++(2.2,0) |- node[pos=0.25, right, font=\footnotesize]{No (decode loop)} (attn.east);
+\draw [arrow] (eos.east)  -- ++(2.2,0) |- node[pos=0.25, right, font=\footnotesize]{No (decode loop)} (emb.east);
 
 %% --- Bottleneck annotations ---
 \node [annot, right=1.8cm of attn] (ba) {%
@@ -103,21 +103,19 @@ A brief overview of the how inference works in LLMs, can be seen in Fig. 2.1
 
 \section{Taxonomy and Key Metrics}\label{sec:taxonomy}
 
-The following terms appear consistently throughout this paper.
+The following terms are consistently throughout this report.
 
 \begin{description}
-  \item[Computation:] Amount of processing power used usually measured in Floating Point Operations (FLOPs).
-  \item[Memory:] Amount of storage space or RAM.
-  \item[Energy:] Amount of electrical power used up.
-  \item[Latency:] Time it takes on average to generate a token
-  \item[Bandwidth:] How quickly data moves from one place to another. In our case, this could for example be how fast the parameters of the LLM are loaded into the GPU.
+  \item[Computation:] Computation refers to the amount of arithmetic processing required to perform inference. It is typically measured by the number of floating-point operations (FLOPs) or integer operations needed to generate an output.
+  \item[Memory:] Memory refers to the amount of storage required to hold the data needed during inference, including model parameters, intermediate activations, and the key-value (KV) cache, measured in Bytes.
+  \item[Energy:] Total amount of electircal energy consumed during the inference process measured in Joules.
+  \item[Bandwidth:] maximum amount of data that can be transferred between memory and the processor per unit time. In our case, this could for example be how fast the parameters of the LLM are loaded into the GPU.
   \item[\ac{kv} cache:] The stored key and value tensors for all past tokens, maintained to avoid recomputation at each decode step.
-  \item[Quantisation:] Representing weights and/or activations at reduced numerical precision to reduce memory footprint and, on hardware with native low-precision arithmetic, increase throughput.
+  \item[Quantization:] Representing weights and/or activations at reduced numerical precision to reduce memory footprint and, on hardware with native low-precision arithmetic, increase throughput.
   \item[Pruning:] Removing parameters from a trained model. \emph{Unstructured} pruning zeros individual weights; \emph{structured} pruning removes entire rows, columns, heads, or layers to yield a dense, smaller model directly executable on standard hardware.
   \item[Knowledge Distillation:] Training a compact \emph{student} model to match the output distribution of a larger \emph{teacher}, transferring capability at a fraction of the inference cost.
-  \item[Throughput:] Tokens (or requests) completed per second across all concurrent users; the primary efficiency metric for server-side deployment.
+  \item[Throughput:] Tokens (or requests) completed per second across all concurrent users measured in tokens per second.
   \item[Latency:] Elapsed time from request arrival to final-token delivery. \ac{ttft} (time to first token) governs perceived responsiveness; \ac{tpot} (time per output token) governs generation speed.
-  \item[Arithmetic intensity:] Ratio of floating-point operations to bytes of memory traffic, in OPs/byte. Kernels below the hardware ridge point are bandwidth-bound; those above are compute-bound.
   \item[Edge device:] Any computing platform with constrained memory, power, and compute operating outside a data centre: smartphones or embedded controllers.
 \end{description}
 
