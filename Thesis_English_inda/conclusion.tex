@@ -7,10 +7,3 @@ This paper has traced the resource challenges of \ac{llm} inference from first p
 ~\ref{chap:preliminaries-and-taxonomy} analysed the inference pipeline step by step and identified its two most resource-intensive components: the self-attention sub-layer, which incurs $O(n^2)$ compute during prefill and a growing \ac{kv} cache during decode.
 
 ~\ref{chap:methods} surveyed the state-of-the-art techniques for addressing these bottlenecks. Several key findings emerge from this analysis.
-
-
-\textbf{Quantisation is the single most impactful intervention for edge deployment.} Reducing weight precision from \ac{fp16} to INT4 achieves a 4$\times$ compression of model weights, making 7B-class models feasible on consumer hardware with 4--8~GB of memory. Methods such as GPTQ~\cite{frantar2023gptq} and AWQ~\cite{lin2024awq} demonstrate that this compression can be achieved with minimal perplexity degradation, particularly for models above 7B parameters.
-
-\textbf{Speculative decoding provides latency improvements without quality loss.} For interactive applications---which are the primary use case for edge inference---reducing latency per generated token is more important than maximising throughput. Speculative decoding~\cite{leviathan2023speculative} directly targets this metric and is composable with other techniques.
-
-\textbf{Dedicated edge runtimes bridge the gap between algorithmic efficiency and hardware performance.} llama.cpp~\cite{ggerganov2023llamacpp} and MLC-LLM~\cite{chen2023mlc} demonstrate that practical edge inference is achievable with current 7B-class models when quantisation, hardware-specific SIMD kernels, and efficient memory management are integrated in a single, well-engineered stack.
