@@ -70,7 +70,7 @@ The following terms are consistently throughout this report.
 
 \begin{description}
   \item[Computation:] Computation refers to the amount of arithmetic processing required to perform inference. It is typically measured by the number of \ac{flops} or integer operations needed to generate an output.
-  \item[Memory:] Memory refers to the amount of storage required to hold the data needed during inference, including model parameters, intermediate activations, and the \abs{kv} cache, measured in Bytes.
+  \item[Memory:] Memory refers to the amount of storage required to hold the data needed during inference, including model parameters, intermediate activations, and the \ac{kv} cache, measured in Bytes.
   \item[Energy:] Total amount of electircal energy consumed during the inference process measured in Joules.
   \item[Bandwidth:] maximum amount of data that can be transferred between memory and the processor per unit time. In our case, this could for example be how fast the parameters of the LLM are loaded into the GPU.
   \item[\ac{kv} cache:] The stored key and value tensors for all past tokens, maintained to avoid recomputation at each decode step.
