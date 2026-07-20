@@ -1,11 +1,57 @@
 % !TEX root = thesis.tex
-\chapter{Introduction}\label{chap:intro}
+\chapter{Introduction}
+\label{chap:introduction}
 
-The past decade has witnessed a remarkable transformation in \ac{ai} research, driven by the emergence and rapid scaling of large generative models. Systems such as GPT-3~\cite{brown2020gpt3}, LLaMA~\cite{touvron2023llama}, and their successors have demonstrated near-human performance on a broad spectrum of tasks---from natural language understanding and code generation to mathematical reasoning and multimodal dialogue. This progress rests fundamentally on the Transformer architecture~\cite{vaswani2017attention}, which, when trained on trillions of tokens and scaled to hundreds of billions of parameters, exhibits surprising emergent capabilities.
+Large generative models have significantly advanced the capabilities of Artificial
+Intelligence (AI) systems in areas such as natural-language processing, code generation,
+question answering, and reasoning. Much of this progress is based on the Transformer
+architecture, whose attention mechanism enables models to construct context-aware
+representations of input sequences \cite{vaswani2017attention}. Increasing the number of
+model parameters and the amount of training data has further improved the range of tasks
+that these models can perform, as demonstrated by model families such as GPT and LLaMA
+\cite{brown2020gpt3,touvron2023llama}.
 
-Yet capability has come at a steep cost. Generating even a single response with a state-of-the-art \ac{llm} requires billions of floating-point operations, gigabytes of memory, and significant electrical power. In data-centre settings this cost is absorbed through specialised hardware and economies of scale, but it nonetheless drives substantial economic and environmental expenditure. On resource-constrained platforms---smartphones, embedded controllers, autonomous vehicles---such demands can make deployment entirely infeasible without dedicated optimisation. The field of resource-efficient \ac{llm} inference has therefore emerged as one of the most active and practically consequential research areas in machine learning~\cite{bai2024beyond}.
+However, the capabilities of these models are accompanied by considerable inference
+requirements. Depending on the model size, sequence length, numerical precision, and
+deployment hardware, generating an output typically requires substantial computation,
+memory capacity, memory bandwidth, and energy. These requirements are especially
+restrictive on edge devices such as smartphones, embedded systems, and other platforms
+that operate with limited memory, processing capacity, and power budgets. Consequently,
+deploying large generative models outside specialised data centres often requires
+optimisations at the model, algorithmic, and system levels
+\cite{bai2024beyond,zhou2024efficientinf}.
 
-This paper provides a structured survey of the state of the art in resource-efficient inference for large generative models. It begins by grounding the analysis in a concrete understanding of what makes the present day Large Generative Models so powerful---Transformers---and goes on to briefly explain the process of inference, highlighting where applicable, which resources are the limiting factor. In addition to this, a short list of terms deemed important will be defined, to give a clear foundation ~\ref{chap:preliminaries-and-taxonomy}. As the main course of this Paper, a comprehensive survey of efficiency techniques follows in ~\ref{chap:methods}. This survey is structured around the three main axes of efficiency: model compression, algorithmic optimisation, and hardware acceleration. Each technique is described in terms of its underlying principles, practical implementation considerations, and empirical performance trade-offs. Finally, the paper concludes with a discussion of open challenges and future directions in the field ~\ref{chap:conclusion}.
+A clear understanding of the inference process is necessary before these optimisation
+methods can be evaluated. In decoder-based language models, inference consists of an
+initial prefill phase followed by sequential autoregressive decoding. The two phases exhibit
+different resource characteristics: prefill processes the prompt largely in parallel and can
+be compute-intensive, whereas decoding repeatedly accesses the model parameters and the
+growing \ac{kv} cache for every generated token. The dominant bottleneck may
+therefore vary between computation, memory capacity, memory bandwidth, latency, and
+energy depending on the workload and target platform
+\cite{yuan2024llminference,zhou2024efficientinf}.
+
+Against this background, this report addresses the following research questions:
+
+\begin{itemize}
+    \item Which operations and data structures constitute the main resource bottlenecks
+    during Transformer inference?
+
+    \item How do model compression, inference-level optimisation, decoding acceleration,
+    and system-level runtimes address these bottlenecks?
+
+    \item What trade-offs determine whether a particular optimisation is suitable for
+    resource-constrained edge devices or server-based deployment?
+\end{itemize}
+
+To answer these questions, the report first introduces the relevant components of the
+Transformer architecture and examines the prefill and decode phases of inference. It then
+surveys model-compression techniques, including quantisation, pruning, and knowledge
+distillation; inference-level methods for attention and KV-cache optimisation; decoding
+and scheduling techniques such as speculative decoding and continuous batching; and
+system-level runtimes including \texttt{llama.cpp}, \ac{mlc-llm}, and vLLM. The methods are
+considered according to the bottlenecks they address, their resource--accuracy trade-offs,
+and their suitability for different deployment environments.
 
 
 

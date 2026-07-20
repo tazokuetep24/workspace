@@ -24,90 +24,53 @@ where \( head_i = Attention(QW_i^Q, KW_i^K,VW_i^V) \) stands for the \textit{i}-
 
 As can be seen from the attention formular above, the matrix multiplication between $Q$ and $K^T$, each of dimension $(n \times d_k)$ and $(d_x \times n)$ respectively, brings about a time complexity of $O(n^2)$, where n denotes the input sequence lenght. The subsequent multiplication with the value matrix accounts for a complexity of $O(d)$. Putting these two together, we see that the time complexity for the Attention mechanism amounts to $O(n^2d)$. The time complexity of the Attention mechanism therefore grows quadratically with the input sequence, which could bring about computational difficulties for verly long input sequences. Other than time complexity, it is worth taking a look at memory complexity as well. This amounts to $O(n^2)$ as result of the $(n \times n)$ attention matrix $(QT^k)$ needing to be stored for further computation.
 
-
 \section{Inference in LLMs}
+\label{sec:llm-inference}
 
-The inference pipeline in Transformer decoder based LLMs is made up of mainly two stages: the Prefill Stage and Decode Stage  
+Inference in decoder-based Large Language Models (LLMs) is autoregressive: the model
+generates one token at a time, and each generated token becomes part of the input used
+to predict the next token. The inference process is commonly divided into two stages:
+the \emph{prefill phase} and the \emph{decode phase}
+\cite{yuan2024llminference,zhou2024efficientinf}.
 
-The prefill stage consists of creating Key-Value (KV) pairs from the input tokens, which will later be cached (KV-cache). These are used to determine the contextual importance of one token when compared with another. At this point it is worth highlighting that the size of the KV-cache grows with input length, which could easily strain memory. \cite{zhou2024efficientinf}
+During the prefill phase, the complete input prompt is tokenised, embedded, and processed
+through all Transformer layers in a single forward pass. Since all prompt tokens are known
+in advance, their representations can be processed largely in parallel. Within every
+self-attention layer, query, key, and value vectors are computed for the prompt tokens.
+The resulting key and value vectors are stored in the Key--Value (KV) cache for subsequent
+decoding steps. Consequently, constructing the KV cache is a result of the prefill
+computation rather than its sole purpose. For a prompt containing \(n\) tokens, standard
+self-attention computes an \(n \times n\) attention matrix and therefore has a computational
+complexity of approximately \(\mathcal{O}(n^{2}d)\), where \(d\) denotes the hidden
+dimension. The prefill phase can therefore become computationally expensive for long
+input sequences \cite{vaswani2017attention,yuan2024llminference}.
 
-The Decode Stage consists of computing new Key and Value pairs based on the output tokens generated  and appending these to the alreading existing KV-cache. \cite{yuan2024llminfunv}
+After the prompt has been processed, the decode phase generates the output
+autoregressively. At each decoding step, the previously generated token is embedded and
+passed through the Transformer layers. A new query, key, and value vector is computed in
+each attention layer. The new query attends to the keys of all previously processed prompt
+and output tokens stored in the KV cache, while the newly computed key and value vectors
+are appended to that cache. The resulting hidden representation is passed through the
+language-model head to obtain a probability distribution over the vocabulary, from which
+the next token is selected.
 
-A brief overview of the how inference works in LLMs, can be seen in Fig. 2.1
-
-
-\begin{figure}[ht]
-\centering
-\begin{tikzpicture}[
-  node distance   = 0.75cm and 0.5cm,
-  process/.style  = {rectangle, draw=blue!70, fill=blue!8,
-                     text width=6.8cm, text centered,
-                     rounded corners=3pt, minimum height=1.5em, font=\small},
-  highlight/.style= {rectangle, draw=red!70, fill=red!8,
-                     text width=6.8cm, text centered,
-                     rounded corners=3pt, minimum height=1.5em, font=\small},
-  io/.style       = {rectangle, draw=green!60!black, fill=green!8,
-                     text width=6.8cm, text centered,
-                     rounded corners=3pt, minimum height=1.5em, font=\small},
-  annot/.style    = {rectangle, draw=red!50, fill=red!5,
-                     text width=4.6cm, align=left,
-                     rounded corners=2pt, font=\footnotesize},
-  decision/.style = {diamond, draw=orange!80, fill=orange!8,
-                     text width=2.0cm, text centered,
-                     aspect=2.8, font=\small},
-  arrow/.style    = {-{Stealth}, thick},
-  darrow/.style   = {dashed, -{Stealth}, thick, red!50}
-]
-%% --- Main flow ---
-\node [io]       (inp)    {Input Prompt (text)};
-\node [process,  below=of inp]    (tok)    {(1)\ Tokenisation};
-\node [process,  below=of tok]    (emb)    {(2)\ Token Embedding + Positional Encoding};
-\node [highlight, below=of emb]   (attn)   {(3)\ Multi-Head Self-Attention + \ac{kv} Cache};
-\node [highlight, below=of attn]  (ffn)    {(4)\ Feed-Forward Network (FFN)};
-\node [process,  below=of ffn]    (lmh)    {(5)\ LM Head: Linear + Softmax};
-\node [decision, below=of lmh, node distance=1.1cm] (eos)  {EOS?};
-\node [io,       below=of eos, node distance=1.1cm]  (out)   {Generated Output (text)};
-
-%% --- Arrows main flow ---
-\foreach \from/\to in {inp/tok, tok/emb, emb/attn, attn/ffn, ffn/lmh, lmh/eos}
-  \draw [arrow] (\from) -- (\to);
-\draw [arrow] (eos.south) -- node[right, font=\footnotesize]{Yes} (out.north);
-\draw [arrow] (eos.east)  -- ++(2.2,0) |- node[pos=0.25, right, font=\footnotesize]{No (decode loop)} (emb.east);
-
-%% --- Bottleneck annotations ---
-\node [annot, right=1.8cm of attn] (ba) {%
-  \textbf{Bottleneck:}\\
-  $\mathcal{O}(n^2)$ memory \& compute\\
-  \ac{kv} cache $\propto L \!\cdot\! n$\\
-  Bandwidth-bound in decode};
-\node [annot, right=1.8cm of ffn]  (bf) {%
-  \textbf{Bottleneck:}\\
-  ${\sim}2/3$ of all parameters\\
-  Bandwidth-bound in decode};
-
-\draw [darrow] (attn.east) -- (ba.west);
-\draw [darrow] (ffn.east)  -- (bf.west);
-
-%% --- Phase labels ---
-\node [left=1.4cm of emb, font=\footnotesize\color{blue!70}, align=right,
-       text width=2.2cm] {\textit{Prefill phase}\\(parallel)};
-\node [left=1.4cm of attn, font=\footnotesize\color{red!70}, align=right,
-       text width=2.2cm] {\textit{Decode phase}\\(sequential)};
-\end{tikzpicture}
-\caption{Schematic of the Transformer inference pipeline. Red-shaded steps (3, 4)
-  represent the primary resource bottlenecks. The decode loop repeats steps 3--5
-  until an end-of-sequence token is produced.}
-\label{fig:inference_pipeline}
-\end{figure}
-
+Unlike prefill, decoding is inherently sequential because token \(t+1\) cannot be computed
+before token \(t\) has been generated. Although the KV cache avoids recomputing the keys
+and values of previous tokens, its memory consumption grows linearly with the total
+sequence length. Furthermore, the model parameters and cached values must be accessed
+for every generated token. As a result, the decode phase is frequently constrained by
+memory capacity and memory bandwidth rather than by arithmetic throughput
+\cite{yuan2024llminference,zhou2024efficientinf}. This distinction between the parallel,
+compute-intensive prefill phase and the sequential, often bandwidth-bound decode phase
+is important because the two stages require different optimisation strategies.
 
 \section{Terminology and Key Metrics}\label{sec:taxonomy}
 
 The following terms are consistently throughout this report.
 
 \begin{description}
-  \item[Computation:] Computation refers to the amount of arithmetic processing required to perform inference. It is typically measured by the number of floating-point operations (FLOPs) or integer operations needed to generate an output.
-  \item[Memory:] Memory refers to the amount of storage required to hold the data needed during inference, including model parameters, intermediate activations, and the key-value (KV) cache, measured in Bytes.
+  \item[Computation:] Computation refers to the amount of arithmetic processing required to perform inference. It is typically measured by the number of \ac{flops} or integer operations needed to generate an output.
+  \item[Memory:] Memory refers to the amount of storage required to hold the data needed during inference, including model parameters, intermediate activations, and the \abs{kv} cache, measured in Bytes.
   \item[Energy:] Total amount of electircal energy consumed during the inference process measured in Joules.
   \item[Bandwidth:] maximum amount of data that can be transferred between memory and the processor per unit time. In our case, this could for example be how fast the parameters of the LLM are loaded into the GPU.
   \item[\ac{kv} cache:] The stored key and value tensors for all past tokens, maintained to avoid recomputation at each decode step.

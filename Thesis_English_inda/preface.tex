@@ -5,11 +5,30 @@
 
 \begingroup
 \begin{abstract}
-\thispagestyle{plain}
-Large generative models, in particular decoder-only Transformer architectures, have demonstrated unprecedented capabilities in natural language processing, code synthesis, and multimodal reasoning. However, the inference process is computationally intensive: repeated autoregressive forward passes impose severe demands on memory, compute, memory bandwidth, and energy. These characteristics make deployment on resource-constrained edge devices such as smartphones, embedded systems, and \ac{iot} hardware a significant open challenge.
+Large generative models provide strong capabilities in natural-language processing,
+code generation, and reasoning, but their inference requires substantial computation,
+memory capacity, memory bandwidth, and energy. These requirements present a particular
+challenge for deployment on resource-constrained edge devices.
 
-This report provides a structured survey of resource-efficient inference in large generative models. Starting from the fundamental Transformer building blocks, it traces the complete inference pipeline and systematically identifies the principal resource bottlenecks at each stage, distinguishing between the compute-bound prefill phase and the memory-bandwidth-bound decode phase. Building on this analysis, the paper surveys the leading efficiency techniques across four layers: model compression (quantisation, pruning, and knowledge distillation), inference-level algorithmic improvements (optimised attention mechanisms and \ac{kv} cache management), decoding strategies (speculative decoding and batching), and system-level runtimes (vLLM, llama.cpp). For each technique, the discussion focuses on the specific bottleneck it addresses and the practical trade-offs that arise when targeting edge hardware.
+This paper surveys resource-efficient inference in decoder-based large language models.
+It first outlines the relevant components of the Transformer architecture and examines
+the two principal stages of inference: the parallel prefill phase and the sequential
+autoregressive decode phase. This analysis identifies the main resource bottlenecks,
+including the computational and memory cost of attention, repeated model-weight
+transfers, and the growth of the Key--Value cache.
 
+Based on these bottlenecks, the paper reviews optimisation methods at several levels of
+the inference stack. These include model compression through quantisation, pruning, and
+knowledge distillation; optimised attention computation and Key--Value cache management;
+decoding and scheduling methods such as speculative decoding and continuous batching;
+and system-level runtimes including \texttt{llama.cpp}, MLC-LLM, and vLLM. The methods
+are compared according to the resources they reduce, their accuracy and performance
+trade-offs, and their suitability for different deployment environments.
+
+The central finding is that resource-efficient inference cannot be achieved through a
+single universally optimal method. Effective deployment requires identifying the dominant
+bottleneck of the target platform and combining compatible model-level, algorithmic,
+decoding, and system-level optimisations accordingly.
 \end{abstract}
 \endgroup
 \cleardoublepage

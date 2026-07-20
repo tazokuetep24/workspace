@@ -1,9 +1,30 @@
 % !TEX root = thesis.tex
 \chapter{Conclusion}\label{chap:conclusion}
 
-This paper has traced the resource challenges of \ac{llm} inference from first principles through to practical deployment solutions, with a sustained focus on edge hardware as the most demanding deployment target.
-~\ref{chap:intro} established that the four resource dimensions of \ac{llm} inference---compute, memory, memory bandwidth, and energy---are not equally constraining in all settings. On edge devices, memory capacity is the hard, non-negotiable limit: a model that does not fit in \ac{dram} simply cannot run. Memory bandwidth is the dominant performance bottleneck during the decode phase, and energy determines the sustained throughput a device can deliver over time.
+This paper presented the line of reasoning from the architecture of Transformer-based
+large language models to the techniques used to make their inference more resource-efficient.
+The Transformer relies on self-attention and feed-forward layers to generate contextualised
+token representations. During autoregressive inference, these operations are executed first
+for the complete input during the prefill phase and subsequently repeated for each generated
+token during the decode phase.
 
-~\ref{chap:preliminaries-and-taxonomy} analysed the inference pipeline step by step and identified its two most resource-intensive components: the self-attention sub-layer, which incurs $O(n^2)$ compute during prefill and a growing \ac{kv} cache during decode.
+The analysis of this inference process showed that its resource requirements arise from
+several connected bottlenecks. Self-attention becomes increasingly expensive for long input
+sequences, the model parameters require substantial memory and must repeatedly be
+transferred during decoding, and the Key--Value cache grows with the number of processed
+tokens. As a result, inference efficiency depends not only on computational capacity, but
+also on memory capacity, memory bandwidth, energy consumption, and the characteristics
+of the target workload.
 
-~\ref{chap:methods} surveyed the state-of-the-art techniques for addressing these bottlenecks. Several key findings emerge from this analysis.
+The surveyed optimisation methods address these bottlenecks at different levels. Model
+compression techniques, including quantisation, pruning, and knowledge distillation, reduce
+the memory and computational requirements of the model. Optimised attention computation
+and Key--Value cache management reduce memory traffic and intermediate storage.
+Speculative decoding and continuous batching improve token-generation latency or hardware
+utilisation, while runtimes such as \texttt{llama.cpp}, MLC-LLM, and vLLM combine
+algorithmic techniques with hardware-specific implementations.
+
+The main takeaway is that resource-efficient inference is not achieved through one isolated
+optimisation. Practical deployment requires identifying the dominant bottleneck of the
+target system and combining compatible model-level, inference-level, decoding, and
+system-level techniques accordingly.

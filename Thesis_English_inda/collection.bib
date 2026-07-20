@@ -182,7 +182,7 @@
 % System-level inference frameworks
 % ---------------------------------------------------------------------------
 
-@misc{ggerganov2023llamacpp,
+@misc{gerganov2023llamacpp,
   author       = {Gerganov, Georgi and contributors},
   title        = {llama.cpp: {C/C++} Port of {Meta}'s {LLaMA} Model},
   year         = {2023},
@@ -190,12 +190,13 @@
   url          = {https://github.com/ggerganov/llama.cpp}
 }
 
-@misc{chen2023mlc,
-  author       = {Chen, Tianqi and others},
-  title        = {{MLC-LLM}: Universal {LLM} Deployment Engine with {ML} Compilation},
+@misc{mlcllm2023,
+  author       = {{MLC-LLM Contributors}},
+  title        = {{MLC-LLM}: Universal LLM Deployment Engine with
+                  Machine Learning Compilation},
   year         = {2023},
-  howpublished = {GitHub repository},
-  url          = {https://github.com/mlc-ai/mlc-llm}
+  howpublished = {\url{https://llm.mlc.ai/}},
+  note         = {Accessed: 2026-07-20}
 }
 
 % ---------------------------------------------------------------------------
@@ -222,7 +223,7 @@
   url           = {https://arxiv.org/abs/2404.14294}
 }
 
-@article{yuan2024llminfunv,
+@article{yuan2024llminference,
   author = {Yuan Zhihang and Shang Yuzhang and Zhou Yang and others},
   title   = {LLM Inference Unveiled: Survey and Roofline Model Insights},
   archivePrefix = {arXiv},
@@ -242,4 +243,79 @@
   author={Frantar, Elias and Alistarh, Dan},
   journal={arXiv preprint arXiv:2301.00774},
   year={2023}
+}
+@article{wang2019structured,
+  title   = {Structured Pruning of Large Language Models},
+  author  = {Wang, Ziheng and Wohlwend, Jeremy and Lei, Tao},
+  journal = {arXiv preprint arXiv:1910.04732},
+  year    = {2019}
+}
+@inproceedings{frantar2022spdy,
+  title     = {{SPDY}: Accurate Pruning with Speedup Guarantees},
+  author    = {Frantar, Elias and Alistarh, Dan},
+  booktitle = {Proceedings of the 39th International Conference
+               on Machine Learning},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {162},
+  pages     = {6726--6743},
+  year      = {2022}
+}
+@inproceedings{gu2024minillm,
+  title     = {{MiniLLM}: Knowledge Distillation of Large Language Models},
+  author    = {Gu, Yuxian and Dong, Li and Wei, Furu and Huang, Minlie},
+  booktitle = {The Twelfth International Conference on Learning
+               Representations},
+  year      = {2024}
+}
+@inproceedings{hsieh2023distilling,
+  title     = {Distilling Step-by-Step! Outperforming Larger Language
+               Models with Less Training Data and Smaller Model Sizes},
+  author    = {Hsieh, Cheng-Yu and Li, Chun-Liang and Yeh, Chih-Kuan
+               and Nakhost, Hootan and Fujii, Yasuhisa and Ratner,
+               Alexander and Krishna, Ranjay and Lee, Chen-Yu and
+               Pfister, Tomas},
+  booktitle = {Findings of the Association for Computational
+               Linguistics: ACL 2023},
+  pages     = {8003--8017},
+  year      = {2023},
+  publisher = {Association for Computational Linguistics}
+}
+@inproceedings{liu2024kivi,
+  title     = {{KIVI}: A Tuning-Free Asymmetric 2bit Quantization
+               for KV Cache},
+  author    = {Liu, Zirui and Yuan, Jiayi and Jin, Hongye and Zhong, Shaochen
+               and Xu, Zhaozhuo and Braverman, Vladimir and Chen, Beidi
+               and Hu, Xia},
+  booktitle = {Proceedings of the 41st International Conference
+               on Machine Learning},
+  year      = {2024},
+  series    = {Proceedings of Machine Learning Research},
+  url       = {https://arxiv.org/abs/2402.02750}
+}
+@inproceedings{kwon2023pagedattention,
+  title     = {Efficient Memory Management for Large Language Model Serving
+               with PagedAttention},
+  author    = {Kwon, Woosuk and Li, Zhuohan and Zhuang, Siyuan
+               and Sheng, Ying and Zheng, Lianmin and Yu, Cody Hao
+               and Gonzalez, Joseph E. and Zhang, Hao and Stoica, Ion},
+  booktitle = {Proceedings of the 29th Symposium on Operating Systems
+               Principles},
+  pages     = {611--626},
+  year      = {2023},
+  publisher = {Association for Computing Machinery},
+  doi       = {10.1145/3600006.3613165},
+  url       = {https://doi.org/10.1145/3600006.3613165}
+}
+@inproceedings{yu2022orca,
+  title     = {Orca: A Distributed Serving System for Transformer-Based
+               Generative Models},
+  author    = {Yu, Gyeong-In and Jeong, Joo Seong and Kim, Geon-Woo
+               and Kim, Soojeong and Chun, Byung-Gon},
+  booktitle = {16th USENIX Symposium on Operating Systems Design and
+               Implementation},
+  series    = {OSDI 22},
+  pages     = {521--538},
+  year      = {2022},
+  publisher = {USENIX Association},
+  url       = {https://www.usenix.org/conference/osdi22/presentation/yu}
 }
